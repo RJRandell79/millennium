@@ -22,8 +22,20 @@ const SolarSystem = () => {
     scene.add(ambientLight);
 
     const textureLoader = new THREE.TextureLoader();
-    const sunTexture = textureLoader.load('/sun/sunmap.jpg');
 
+    const starGeometry = new THREE.SphereGeometry(120, 64, 64);
+    const starTexture = textureLoader.load('textures/galaxy.png');
+    const starMaterial = new THREE.MeshBasicMaterial({
+      map: starTexture,
+      side: THREE.BackSide,
+      transparent: true,
+    });
+
+    const starMesh = new THREE.Mesh(starGeometry, starMaterial);
+    starMesh.layers.set(0);
+    scene.add(starMesh);
+
+    const sunTexture = textureLoader.load('/sun/sunmap.jpg');
     const sunGeometry = new THREE.SphereGeometry(2, 32, 32);
     const sunMaterial = new THREE.MeshBasicMaterial({ map: sunTexture });
     const sun = new THREE.Mesh(sunGeometry, sunMaterial);
@@ -65,6 +77,7 @@ const SolarSystem = () => {
     const animate = () => {
       requestAnimationFrame(animate);
 
+      starMesh.rotation.y += 0.0001;
       mercury.rotation.y += 0.01;
       venus.rotation.y += 0.005;
       earth.rotation.y += 0.004;
