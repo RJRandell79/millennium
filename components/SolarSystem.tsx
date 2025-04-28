@@ -16,6 +16,7 @@ const SolarSystem = () => {
     renderer.domElement.className = 'solar-system-canvas';
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.body.appendChild(renderer.domElement);
 
     const renderScene = new RenderPass(scene, camera);
@@ -26,8 +27,11 @@ const SolarSystem = () => {
     bloomComposer.addPass(renderScene);
     bloomComposer.addPass(bloomPass);
 
-    const light = new THREE.PointLight(0xffcc00, 1, 1000);
+    const light = new THREE.PointLight(0xffcc00, 750, 10000);
     light.position.set(0, 0, 0); 
+    light.castShadow = true;
+    light.shadow.mapSize.width = 128;
+    light.shadow.mapSize.height = 128;
     scene.add(light);
 
     const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
@@ -44,35 +48,47 @@ const SolarSystem = () => {
     });
 
     const starMesh = new THREE.Mesh(starGeometry, starMaterial);
+    starMesh.castShadow = false;
+    starMesh.receiveShadow = false;
     scene.add(starMesh);
 
     const sunGeometry = new THREE.SphereGeometry(3, 64, 64);
     const sunMaterial = new THREE.MeshStandardMaterial({ color: 0xffcc00, emissive: 0xffcc00, emissiveIntensity: 1.1, depthTest: true, transparent: false, opacity: 1 });
     const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+    sun.castShadow = false;
+    sun.receiveShadow = false;
     sun.layers.set(1);
     scene.add(sun);
 
     const mercuryGeometry = new THREE.SphereGeometry(0.3, 32, 32);
-    const mercuryMaterial = new THREE.MeshBasicMaterial({ color: 0x888888, depthTest: true, transparent: false, opacity: 1 });
+    const mercuryMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, depthTest: true, transparent: false, opacity: 1 });
     const mercury = new THREE.Mesh(mercuryGeometry, mercuryMaterial);
+    mercury.castShadow = false;
+    mercury.receiveShadow = true;
     mercury.position.set(5, 0, 0);
     scene.add(mercury);
 
     const venusGeometry = new THREE.SphereGeometry(0.7, 32, 32);
-    const venusMaterial = new THREE.MeshBasicMaterial({ color: 0xffcc00, depthTest: true, transparent: false, opacity: 1 });
+    const venusMaterial = new THREE.MeshStandardMaterial({ color: 0xffcc00, depthTest: true, transparent: false, opacity: 1 });
     const venus = new THREE.Mesh(venusGeometry, venusMaterial);
+    venus.castShadow = false;
+    venus.receiveShadow = true;
     venus.position.set(8, 0, 0); 
     scene.add(venus);
 
     const earthGeometry = new THREE.SphereGeometry(0.8, 32, 32);
-    const earthMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff, depthTest: true, transparent: false, opacity: 1 });
+    const earthMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff, depthTest: true, transparent: false, opacity: 1 });
     const earth = new THREE.Mesh(earthGeometry, earthMaterial);
+    earth.castShadow = false;
+    earth.receiveShadow = true;
     earth.position.set(12, 0, 0);
     scene.add(earth);
 
     const marsGeometry = new THREE.SphereGeometry(0.6, 32, 32);
-    const marsMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, depthTest: true, transparent: false, opacity: 1 });
+    const marsMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000, depthTest: true, transparent: false, opacity: 1 });
     const mars = new THREE.Mesh(marsGeometry, marsMaterial);
+    mars.castShadow = false;
+    mars.receiveShadow = true;
     mars.position.set(16, 0, 0);
     scene.add(mars);
 
