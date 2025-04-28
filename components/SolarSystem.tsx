@@ -7,6 +7,8 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 
 const SolarSystem = () => {
 
+  const sunRadius = 3;
+
   useEffect(() => {
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -27,7 +29,7 @@ const SolarSystem = () => {
     bloomComposer.addPass(renderScene);
     bloomComposer.addPass(bloomPass);
 
-    const light = new THREE.PointLight(0xffcc00, 750, 10000);
+    const light = new THREE.PointLight(0xffcc00, 2, 1000, 2);
     light.position.set(0, 0, 0); 
     light.castShadow = true;
     light.shadow.mapSize.width = 128;
@@ -52,7 +54,7 @@ const SolarSystem = () => {
     starMesh.receiveShadow = false;
     scene.add(starMesh);
 
-    const sunGeometry = new THREE.SphereGeometry(3, 64, 64);
+    const sunGeometry = new THREE.SphereGeometry(sunRadius, 64, 64);
     const sunMaterial = new THREE.MeshStandardMaterial({ color: 0xffcc00, emissive: 0xffcc00, emissiveIntensity: 1.1, depthTest: true, transparent: false, opacity: 1 });
     const sun = new THREE.Mesh(sunGeometry, sunMaterial);
     sun.castShadow = false;
@@ -60,7 +62,7 @@ const SolarSystem = () => {
     sun.layers.set(1);
     scene.add(sun);
 
-    const mercuryGeometry = new THREE.SphereGeometry(0.3, 32, 32);
+    const mercuryGeometry = new THREE.SphereGeometry(sunRadius * 0.0035, 32, 32);
     const mercuryMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, depthTest: true, transparent: false, opacity: 1 });
     const mercury = new THREE.Mesh(mercuryGeometry, mercuryMaterial);
     mercury.castShadow = false;
@@ -68,7 +70,7 @@ const SolarSystem = () => {
     mercury.position.set(5, 0, 0);
     scene.add(mercury);
 
-    const venusGeometry = new THREE.SphereGeometry(0.7, 32, 32);
+    const venusGeometry = new THREE.SphereGeometry(sunRadius * 0.0087, 32, 32);
     const venusMaterial = new THREE.MeshStandardMaterial({ color: 0xffcc00, depthTest: true, transparent: false, opacity: 1 });
     const venus = new THREE.Mesh(venusGeometry, venusMaterial);
     venus.castShadow = false;
@@ -76,7 +78,7 @@ const SolarSystem = () => {
     venus.position.set(8, 0, 0); 
     scene.add(venus);
 
-    const earthGeometry = new THREE.SphereGeometry(0.8, 32, 32);
+    const earthGeometry = new THREE.SphereGeometry(sunRadius * 0.0091, 32, 32);
     const earthMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff, depthTest: true, transparent: false, opacity: 1 });
     const earth = new THREE.Mesh(earthGeometry, earthMaterial);
     earth.castShadow = false;
@@ -84,7 +86,7 @@ const SolarSystem = () => {
     earth.position.set(12, 0, 0);
     scene.add(earth);
 
-    const marsGeometry = new THREE.SphereGeometry(0.6, 32, 32);
+    const marsGeometry = new THREE.SphereGeometry(sunRadius * 0.0048, 32, 32);
     const marsMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000, depthTest: true, transparent: false, opacity: 1 });
     const mars = new THREE.Mesh(marsGeometry, marsMaterial);
     mars.castShadow = false;
@@ -99,23 +101,25 @@ const SolarSystem = () => {
     const animate = () => {
       requestAnimationFrame(animate);
 
+      const time = Date.now() * 0.0001;
+
       starMesh.rotation.y += 0.0001;
       mercury.rotation.y += 0.01;
       venus.rotation.y += 0.005;
       earth.rotation.y += 0.004;
       mars.rotation.y += 0.003;
 
-      mercury.position.x = 5 * Math.cos(Date.now() * 0.001);
-      mercury.position.z = 5 * Math.sin(Date.now() * 0.001);
+      mercury.position.x = 5 * Math.cos(time * 4.15);
+      mercury.position.z = 5 * Math.sin(time * 4.15);
 
-      venus.position.x = 8 * Math.cos(Date.now() * 0.0005);
-      venus.position.z = 8 * Math.sin(Date.now() * 0.0005);
+      venus.position.x = 8 * Math.cos(time * 1.62);
+      venus.position.z = 8 * Math.sin(time * 1.62);
 
-      earth.position.x = 12 * Math.cos(Date.now() * 0.0003);
-      earth.position.z = 12 * Math.sin(Date.now() * 0.0003);
+      earth.position.x = 12 * Math.cos(time);
+      earth.position.z = 12 * Math.sin(time);
 
-      mars.position.x = 16 * Math.cos(Date.now() * 0.0002);
-      mars.position.z = 16 * Math.sin(Date.now() * 0.0002);
+      mars.position.x = 16 * Math.cos(time * 0.53);
+      mars.position.z = 16 * Math.sin(time * 0.53);
 
       controls.update();
       renderer.clear();
