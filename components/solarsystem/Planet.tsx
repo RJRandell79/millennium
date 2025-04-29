@@ -24,7 +24,8 @@ const Planet = ({ name, size, color, position, orbitSpeed, scene }: PlanetProps)
   labelDiv.className = `${name.toLowerCase()}-label`;
   labelDiv.textContent = name;
   labelDiv.style.marginTop = '-1em';
-  labelDiv.style.pointerEvents = 'none';
+  labelDiv.style.pointerEvents = 'auto';
+  labelDiv.onclick = () => alert(`Clicked on ${name}`);
   const label = new CSS2DObject(labelDiv);
   label.position.set(0, size + 0.5, 0);
   planet.add(label);

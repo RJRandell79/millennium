@@ -17,5 +17,9 @@
   color: #71f1a8;
   border: 1px solid #7bf1a8;
   transform-origin: center center;
-  pointer-events: none;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  &:hover {
+    background-color: #71f1a8;
+    color: oklch(27.8% .033 256.848);
+  }
 }
