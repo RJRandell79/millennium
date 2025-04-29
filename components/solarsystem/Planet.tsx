@@ -41,3 +41,5 @@ const Planet = ({ name, size, color, position, orbitSpeed, scene }: PlanetProps)
 };
 
 export default Planet;
+
+// This component creates a planet with a label in a solar system simulation.

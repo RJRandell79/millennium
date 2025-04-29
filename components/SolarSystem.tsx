@@ -5,7 +5,8 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import Planet from './planet/Planet';
+import Planet from './solarsystem/Planet';
+import OrbitPath from './solarsystem/OrbitPath';
 import { planets } from '../data/planets';
 
 const SolarSystem = () => {
@@ -73,6 +74,10 @@ const SolarSystem = () => {
     sun.receiveShadow = false;
     sun.layers.set(1);
     scene.add(sun);
+
+    planets.forEach((planet) => {
+      OrbitPath({ radius: planet.position[0], scene });
+    });
 
     const planetObjects = planets.map((planet) =>
       Planet({ ...planet, size: sunRadius * planet.size, scene })
