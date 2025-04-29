@@ -6,6 +6,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import Planet from './planet/Planet';
+import { planets } from '../data/planets';
 
 const SolarSystem = () => {
 
@@ -73,15 +74,8 @@ const SolarSystem = () => {
     sun.layers.set(1);
     scene.add(sun);
 
-    const planets = [
-      { name: 'Mercury', size: sunRadius * 0.0035, color: '0x888888', position: [5, 0, 0] as [number, number, number], orbitSpeed: 4.15 },
-      { name: 'Venus', size: sunRadius *  0.0087, color: '0xffcc00', position: [8, 0, 0] as [number, number, number], orbitSpeed: 1.62 },
-      { name: 'Earth', size: sunRadius * 0.0091, color: '0x0000ff', position: [12, 0, 0] as [number, number, number], orbitSpeed: 1 },
-      { name: 'Mars', size: sunRadius * 0.0048, color: '0xff0000', position: [16, 0, 0] as [number, number, number], orbitSpeed: 0.53 }
-    ];
-
     const planetObjects = planets.map((planet) =>
-      Planet({ ...planet, scene })
+      Planet({ ...planet, size: sunRadius * planet.size, scene })
     );
 
     camera.position.z = 30;
