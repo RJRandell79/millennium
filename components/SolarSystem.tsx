@@ -15,6 +15,8 @@ interface SolarSystemProps {
 
 const SolarSystem: React.FC<SolarSystemProps> = ({ onPlanetClick }) => {
   const mountRef = useRef<HTMLDivElement>(null);
+  const animationIdRef = useRef<number| null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
   const sunRadius = 3;
 
   useEffect(() => {
@@ -98,7 +100,7 @@ const SolarSystem: React.FC<SolarSystemProps> = ({ onPlanetClick }) => {
     const controls = new OrbitControls(camera, renderer.domElement);
 
     const animate = () => {
-      requestAnimationFrame(animate);
+      animationIdRef.current = requestAnimationFrame(animate);
 
       const time = Date.now() * 0.0001;
 
@@ -146,6 +148,43 @@ const SolarSystem: React.FC<SolarSystemProps> = ({ onPlanetClick }) => {
     return () => {
       window.removeEventListener('resize', handleResize);
 
+      if (animationIdRef.current) {
+        cancelAnimationFrame(animationIdRef.current);
+      }
+
+      scene.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) {
+            if (Array.isArray(child.material)) {
+              child.material.forEach(material => {
+                if (material.map) material.map.dispose();
+                if (material.normalMap) material.normalMap.dispose();
+                if (material.specularMap) material.specularMap.dispose();
+                material.dispose();
+              });
+            } else {
+              if (child.material.map) child.material.map.dispose();
+              if (child.material.normalMap) child.material.normalMap.dispose();
+              if (child.material.specularMap) child.material.specularMap.dispose();
+              child.material.dispose();
+            }
+          }
+        }
+      });
+
+      while(scene.children.length > 0) {
+        scene.remove(scene.children[0]);
+      }
+
+      if (controlsRef.current) {
+        controlsRef.current.dispose();
+      }
+
+      if (bloomComposer) {
+        bloomComposer.dispose();
+      }
+
       if (mountRef.current) {
         if (renderer.domElement && mountRef.current.contains(renderer.domElement)) {
           mountRef.current.removeChild(renderer.domElement);
@@ -156,6 +195,7 @@ const SolarSystem: React.FC<SolarSystemProps> = ({ onPlanetClick }) => {
       }
 
       renderer.dispose();
+      renderer.forceContextLoss();
     };
   }, [onPlanetClick]);
 

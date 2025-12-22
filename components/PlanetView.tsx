@@ -20,6 +20,7 @@ const PlanetView: React.FC<PlanetViewProps> = ({ planetData }) => {
   const animationIdRef = useRef<number| null>(null);
   const moonsRef = useRef<THREE.Mesh[]>([]);
   const mainPlanetRef = useRef<THREE.Mesh | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -150,6 +151,52 @@ const PlanetView: React.FC<PlanetViewProps> = ({ planetData }) => {
         cancelAnimationFrame(animationIdRef.current);
       }
       window.removeEventListener('resize', handleResize);
+
+      if (controlsRef.current) {
+        controlsRef.current.dispose();
+      }
+
+      if (sceneRef.current) {
+        sceneRef.current.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+              if (Array.isArray(child.material)) {
+                child.material.forEach(material => {
+                  if (material.map) material.map.dispose();
+                  material.dispose();
+                });
+              } else {
+                if (child.material.map) child.material.map.dispose();
+                child.material.dispose();
+              }
+            }
+          }
+        });
+
+        while(sceneRef.current.children.length > 0) {
+          sceneRef.current.remove(sceneRef.current.children[0]);
+        }
+      }
+
+      if (mountRef.current && rendererRef.current && labelRendererRef.current) {
+        try {
+          if (rendererRef.current.domElement) {
+            mountRef.current.removeChild(rendererRef.current.domElement);
+          }
+          if (labelRendererRef.current.domElement) {
+            mountRef.current.removeChild(labelRendererRef.current.domElement);
+          }
+        } catch (error) {
+          console.warn('Error cleaning up renderers:', error);
+        }
+      }
+
+      if (rendererRef.current) {
+        rendererRef.current.dispose();
+        rendererRef.current.forceContextLoss();
+      } 
+
       if (mountRef.current) {
         if (renderer.domElement) mountRef.current.removeChild(renderer.domElement);
         if (labelRenderer.domElement) mountRef.current.removeChild(labelRenderer.domElement);

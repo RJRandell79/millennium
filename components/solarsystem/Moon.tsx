@@ -16,7 +16,8 @@ const Moon = ({ moonData, scene, scaledDistance, scaledSize }: MoonProps) => {
     color: moonData.color,
     position: [scaledDistance, 0, 0],
     scene,
-    showClickCursor: false
+    showClickCursor: false,
+    texture: moonData.texture
   });
 
   body.userData = { 

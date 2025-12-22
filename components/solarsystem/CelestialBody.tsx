@@ -9,6 +9,7 @@ interface CelestialBodyProps {
   scene: THREE.Scene;
   onClick?: () => void;
   showClickCursor?: boolean;
+  texture?: string;
 }
 
 const CelestialBody = ({ 
@@ -18,12 +19,49 @@ const CelestialBody = ({
   position, 
   scene, 
   onClick,
-  showClickCursor = false 
+  showClickCursor = false,
+  texture
 }: CelestialBodyProps) => {
-  const body = new THREE.Mesh(
-    new THREE.SphereGeometry(size, 32, 32),
-    new THREE.MeshStandardMaterial({ color, depthTest: true, transparent: false, opacity: 1 })
-  );
+    const geometry = new THREE.SphereGeometry(size, 32, 32);
+    let material: THREE.MeshStandardMaterial;
+
+    if (texture) {
+      const textureLoader = new THREE.TextureLoader();
+      const loadedTexture = textureLoader.load(
+        texture,
+        (tex) => {
+            console.log(`Texture loaded for ${name}`);
+        },
+        undefined,
+        (err) => {
+            console.warn(`Failed to load texture for ${name}:`, err);
+        }
+      );
+
+      loadedTexture.wrapS = THREE.RepeatWrapping;
+      loadedTexture.wrapT = THREE.RepeatWrapping;
+      loadedTexture.generateMipmaps = true;
+      loadedTexture.minFilter = THREE.LinearMipmapLinearFilter;
+      loadedTexture.magFilter = THREE.LinearFilter;
+
+      material = new THREE.MeshStandardMaterial({ 
+        map: loadedTexture,
+        color: parseInt(color.replace('0x', ''), 16),
+        depthTest: true, 
+        transparent: false, 
+        opacity: 1 
+      });
+
+    } else {
+        material = new THREE.MeshStandardMaterial({ 
+          color, 
+          depthTest: true, 
+          transparent: false, 
+          opacity: 1 
+        });
+    }
+
+  const body = new THREE.Mesh(geometry, material);
   body.castShadow = false;
   body.receiveShadow = true;
   body.position.set(...position);
@@ -53,7 +91,15 @@ const CelestialBody = ({
   const line = new THREE.Line(lineGeometry, lineMaterial);
   body.add(line);
 
-  return { body, label };
+  return { body, label,
+    dispose: () => {
+      geometry.dispose();
+      material.dispose();
+      if (material.map) material.map.dispose();
+      lineGeometry.dispose();
+      lineMaterial.dispose();
+    }
+   };
 };
 
 export default CelestialBody;

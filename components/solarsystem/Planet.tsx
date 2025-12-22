@@ -36,7 +36,8 @@ const Planet = ({
     position,
     scene,
     onClick: handleClick,
-    showClickCursor: true
+    showClickCursor: true,
+    texture: planetData.texture
   });
 
   planet.userData = { orbitSpeed, distance: position[0] };
