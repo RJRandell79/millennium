@@ -10,7 +10,8 @@
 .mercury-label,
 .venus-label,
 .earth-label,
-.mars-label {
+.mars-label,
+.moon-label {
   padding: 2px 10px;
   font-family: 'Courier New', monospace;
   background-color: oklch(27.8% .033 256.848);

@@ -1,6 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import Moon from './solarsystem/Moon';
+import CelestialBody from './solarsystem/CelestialBody';
+import OrbitPath from './solarsystem/OrbitPath';
 import { PlanetData, MoonData } from '@/data/planets';
 
 interface PlanetViewProps {
@@ -15,6 +19,7 @@ const PlanetView: React.FC<PlanetViewProps> = ({ planetData }) => {
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const animationIdRef = useRef<number| null>(null);
   const moonsRef = useRef<THREE.Mesh[]>([]);
+  const mainPlanetRef = useRef<THREE.Mesh | null>(null);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -48,6 +53,8 @@ const PlanetView: React.FC<PlanetViewProps> = ({ planetData }) => {
     mountRef.current.appendChild(renderer.domElement);
     mountRef.current.appendChild(labelRenderer.domElement);
 
+    const controls = new OrbitControls(camera, renderer.domElement);
+
     const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
     scene.add(ambientLight);
 
@@ -57,61 +64,40 @@ const PlanetView: React.FC<PlanetViewProps> = ({ planetData }) => {
     scene.add(directionalLight);
 
     const planetSize = Math.max(planetData.size * 100, 1);
-    const mainPlanet = new THREE.Mesh(
-      new THREE.SphereGeometry(planetSize, 32, 32),
-      new THREE.MeshStandardMaterial({ color: planetData.color })
-    );
-    mainPlanet.position.set(0, 0, 0);
-    scene.add(mainPlanet);
 
-    const mainLabelDiv = document.createElement('div');
-    mainLabelDiv.textContent = planetData.name;
-    mainLabelDiv.style.color = 'white';
-    mainLabelDiv.style.fontSize = '20px';
-    mainLabelDiv.style.fontWeight = 'bold';
-    const mainLabel = new CSS2DObject(mainLabelDiv);
-    mainLabel.position.set(0, planetSize + 0.8, 0);
-    mainPlanet.add(mainLabel);
+    const { body: mainPlanet, label: mainLabel } = CelestialBody({
+      name: planetData.name,
+      size: planetSize,
+      color: planetData.color,
+      position: [0, 0, 0],
+      scene,
+      showClickCursor: false
+    });
+    
+    mainPlanetRef.current = mainPlanet;
 
     const moons: THREE.Mesh[] = [];
+    const moonLabels: CSS2DObject[] = [];
+    
     if (planetData.moons && planetData.moons.length > 0) {
       planetData.moons.forEach((moonData: MoonData) => {
-        const moonSize = Math.max(moonData.size * 100, 0.1);
-        const moon = new THREE.Mesh(
-          new THREE.SphereGeometry(moonSize, 16, 16),
-          new THREE.MeshStandardMaterial({ color: moonData.color })
-        );
-        
         const scaledDistance = moonData.distance * planetSize;
-        moon.position.set(scaledDistance, 0, 0);
-        scene.add(moon);
+        OrbitPath({ radius: scaledDistance, scene });
+      });
 
-        // Add moon label
-        const moonLabelDiv = document.createElement('div');
-        moonLabelDiv.textContent = moonData.name;
-        moonLabelDiv.style.color = 'white';
-        moonLabelDiv.style.fontSize = '14px';
-        const moonLabel = new CSS2DObject(moonLabelDiv);
-        moonLabel.position.set(0, moonSize + 0.3, 0);
-        moon.add(moonLabel);
-
-        const orbitGeometry = new THREE.RingGeometry(
-          scaledDistance - 0.05, 
-          scaledDistance + 0.05, 
-          64
-        );
-        const orbitMaterial = new THREE.MeshBasicMaterial({
-          color: 0x444444,
-          side: THREE.DoubleSide,
-          transparent: true,
-          opacity: 0.3
+      planetData.moons.forEach((moonData: MoonData) => {
+        const scaledDistance = moonData.distance * planetSize;
+        const scaledSize = Math.max(moonData.size * 100, 0.1);
+        
+        const { moon, label } = Moon({
+          moonData,
+          scene,
+          scaledDistance,
+          scaledSize
         });
-        const orbit = new THREE.Mesh(orbitGeometry, orbitMaterial);
-        orbit.rotation.x = Math.PI / 2;
-        scene.add(orbit);
 
-        moon.userData = { ...moonData, scaledDistance };
         moons.push(moon);
+        moonLabels.push(label);
       });
     }
 
@@ -125,6 +111,23 @@ const PlanetView: React.FC<PlanetViewProps> = ({ planetData }) => {
         const time = Date.now() * 0.001;
         moon.position.x = Math.cos(time * orbitSpeed) * scaledDistance;
         moon.position.z = Math.sin(time * orbitSpeed) * scaledDistance;
+      });
+
+      controls.update();
+
+      // Scale labels based on camera distance
+      const distanceToCamera = camera.position.distanceTo(mainPlanet.position);
+      const labelScale = THREE.MathUtils.clamp(1 / distanceToCamera * 15, 0.5, 2);
+      mainLabel.element.style.transform = `translate(-50%, -50%) scale(${labelScale})`;
+
+      // Scale moon labels
+      moonsRef.current.forEach((moon) => {
+        const moonDistance = camera.position.distanceTo(moon.position);
+        const moonLabelScale = THREE.MathUtils.clamp(1 / moonDistance * 10, 0.3, 1.5);
+        const moonLabel = moon.children.find(child => child instanceof CSS2DObject);
+        if (moonLabel) {
+          (moonLabel as CSS2DObject).element.style.transform = `translate(-50%, -50%) scale(${moonLabelScale})`;
+        }
       });
 
       renderer.render(scene, camera);

@@ -1,6 +1,6 @@
 import { PlanetData } from '@/data/planets';
+import CelestialBody from './CelestialBody';
 import * as THREE from 'three';
-import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 
 interface PlanetProps {
   name: string;
@@ -13,36 +13,31 @@ interface PlanetProps {
   planetData: PlanetData;
 }
 
-const Planet = ({ name, size, color, position, orbitSpeed, scene, onPlanetClick, planetData }: PlanetProps) => {
-  const planet = new THREE.Mesh(
-    new THREE.SphereGeometry(size, 32, 32),
-    new THREE.MeshStandardMaterial({ color, depthTest: true, transparent: false, opacity: 1 })
-  );
-  planet.castShadow = false;
-  planet.receiveShadow = true;
-  planet.position.set(...position);
-  scene.add(planet);
-
-  const labelDiv = document.createElement('div');
-  labelDiv.className = `${name.toLowerCase()}-label`;
-  labelDiv.textContent = name;
-  labelDiv.style.marginTop = '-1em';
-  labelDiv.style.pointerEvents = 'auto';
-  labelDiv.style.cursor = 'pointer';
-  labelDiv.onclick = () => {
+const Planet = ({ 
+  name, 
+  size, 
+  color, 
+  position, 
+  orbitSpeed, 
+  scene, 
+  onPlanetClick, 
+  planetData 
+}: PlanetProps) => {
+  const handleClick = () => {
     if (onPlanetClick) {
       onPlanetClick(planetData);
     }
-  }
-  const label = new CSS2DObject(labelDiv);
-  label.position.set(0, size + 0.5, 0);
-  planet.add(label);
+  };
 
-  const linePoints = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, size + 0.5, 0)];
-  const lineGeometry = new THREE.BufferGeometry().setFromPoints(linePoints);
-  const lineMaterial = new THREE.LineBasicMaterial({ color: 0x7bf1a8 });
-  const line = new THREE.Line(lineGeometry, lineMaterial);
-  planet.add(line);
+  const { body: planet, label } = CelestialBody({
+    name,
+    size,
+    color,
+    position,
+    scene,
+    onClick: handleClick,
+    showClickCursor: true
+  });
 
   planet.userData = { orbitSpeed, distance: position[0] };
 
@@ -50,5 +45,3 @@ const Planet = ({ name, size, color, position, orbitSpeed, scene, onPlanetClick,
 };
 
 export default Planet;
-
-// This component creates a planet with a label in a solar system simulation.
