@@ -5,10 +5,9 @@ import { PlanetData, MoonData } from '@/data/planets';
 
 interface PlanetViewProps {
   planetData: PlanetData;
-  onBack?: () => void;
 }
 
-const PlanetView: React.FC<PlanetViewProps> = ({ planetData, onBack }) => {
+const PlanetView: React.FC<PlanetViewProps> = ({ planetData }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -159,25 +158,6 @@ const PlanetView: React.FC<PlanetViewProps> = ({ planetData, onBack }) => {
   return (
     <div style={{ position: 'relative', width: '100vw', height: '100vh' }}>
       <div ref={mountRef} />
-      {onBack && (
-        <button
-          onClick={onBack}
-          style={{
-            position: 'absolute',
-            top: '20px',
-            left: '20px',
-            padding: '10px 20px',
-            background: 'rgba(255, 255, 255, 0.1)',
-            color: 'white',
-            border: '1px solid white',
-            borderRadius: '5px',
-            cursor: 'pointer',
-            zIndex: 1000
-          }}
-        >
-          ← Back to Solar System
-        </button>
-      )}
       {(!planetData.moons || planetData.moons.length === 0) && (
         <div style={{
           position: 'absolute',

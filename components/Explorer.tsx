@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Toolbar from './Toolbar';
 import SolarSystem from './SolarSystem';
 import PlanetView from './PlanetView';
 import { PlanetData } from '@/data/planets';
@@ -19,14 +20,12 @@ const Explorer: React.FC = () => {
 
   return (
     <div style={{ position: 'absolute', top: '0', right: '0', bottom: '0', left: '0', width: '100vw', height: 'calc(100vh - 64px)' }}>
+      <Toolbar showBackButton={currentView === 'planet'} onBack={handleBackToSolarSystem} backButtonText="Back to Solar System" />
       {currentView === 'solar-system' && (
         <SolarSystem onPlanetClick={handlePlanetClick} />
       )}
       {currentView === 'planet' && selectedPlanet && (
-        <PlanetView 
-          planetData={selectedPlanet} 
-          onBack={handleBackToSolarSystem}
-        />
+        <PlanetView planetData={selectedPlanet} />
       )}
     </div>
   );

@@ -6,16 +6,23 @@ import { Tooltip } from 'react-tooltip';
 import { FaCogs, FaForward, FaPlay, FaRegLightbulb } from 'react-icons/fa';
 import { IoIosHelpCircle, IoIosRocket, IoIosPlanet, IoLogoIonic } from 'react-icons/io';
 import { IoHome } from "react-icons/io5";
+import { BsZoomOut } from "react-icons/bs";
 import { GiSave, GiLoad } from "react-icons/gi";
 import { CiMemoPad } from "react-icons/ci";
 
-const IconButton = ({ tooltipId, tooltipContent, icon: Icon, size }: { tooltipId: string; tooltipContent: string; icon: React.ElementType; size: number }) => (
-    <button className="hover:text-white" data-tooltip-id={tooltipId} data-tooltip-content={tooltipContent} aria-label={tooltipContent}>
+interface ToolbarProps {
+    showBackButton?: boolean;
+    onBack?: () => void;
+    backButtonText?: string;
+}
+
+const IconButton = ({ tooltipId, tooltipContent, icon: Icon, size, onClick }: { tooltipId: string; tooltipContent: string; icon: React.ElementType; size: number; onClick?: () => void }) => (
+    <button className="hover:text-white" data-tooltip-id={tooltipId} data-tooltip-content={tooltipContent} aria-label={tooltipContent} onClick={onClick}>
       <Icon size={size} />
     </button>
 );
 
-const Toolbar = () => {
+const Toolbar: React.FC<ToolbarProps> = ({ showBackButton, onBack, backButtonText }) => {
     const [dateTime, setDateTime] = useState<string>('');
 
     const updateDateTime = () => {
@@ -43,6 +50,11 @@ const Toolbar = () => {
                 <IconButton tooltipId="event-tooltip" tooltipContent="Event Log" icon={CiMemoPad} size={28} />
             </div>
             <div className="space-x-6 flex items-center">
+                {showBackButton ? (
+                    <IconButton tooltipId="back-tooltip" tooltipContent={backButtonText || "Back"} icon={BsZoomOut} size={24} onClick={onBack} />
+                ) : null}
+            </div>
+            <div className="space-x-6 flex items-center">
                 <IconButton tooltipId="save-tooltip" tooltipContent="Save Game" icon={GiSave} size={24} />
                 <IconButton tooltipId="load-tooltip" tooltipContent="Load Game" icon={GiLoad} size={24} />
                 <IconButton tooltipId="hour-tooltip" tooltipContent="Advance Hour" icon={FaPlay} size={22} />
@@ -58,6 +70,7 @@ const Toolbar = () => {
             <Tooltip id="solar-tooltip" place="bottom" style={{ backgroundColor: "oklch(87.1% 0.15 154.449)", color: "#000" }} />
             <Tooltip id="research-tooltip" place="bottom" style={{ backgroundColor: "oklch(87.1% 0.15 154.449)", color: "#000" }} />
             <Tooltip id="event-tooltip" place="bottom" style={{ backgroundColor: "oklch(87.1% 0.15 154.449)", color: "#000" }} />
+            <Tooltip id="back-tooltip" place="bottom" style={{ backgroundColor: "oklch(87.1% 0.15 154.449)", color: "#000" }} />
             <Tooltip id="save-tooltip" place="bottom" style={{ backgroundColor: "oklch(87.1% 0.15 154.449)", color: "#000" }} />
             <Tooltip id="load-tooltip" place="bottom" style={{ backgroundColor: "oklch(87.1% 0.15 154.449)", color: "#000" }} />
             <Tooltip id="hour-tooltip" place="bottom" style={{ backgroundColor: "oklch(87.1% 0.15 154.449)", color: "#000" }} />

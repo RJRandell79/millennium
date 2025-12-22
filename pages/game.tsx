@@ -1,13 +1,11 @@
 import '../styles/globals.css';
 import '../styles/game.css';
 
-import Toolbar from '../components/Toolbar';
 import Explorer from '../components/Explorer';
 
 export default function GamePage() {
   return (
     <div className="bg-black text-green-300 min-h-screen">
-      <Toolbar />
       <main className="p-8 relative top-16 z-50">
         <h1 className="text-2xl mb-4 relative z-50">Millennium 2.2 (Web Remake)</h1>
         <p className="relative z-50">Game content goes here!</p>
