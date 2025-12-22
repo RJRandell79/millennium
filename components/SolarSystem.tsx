@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -7,35 +7,47 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import Planet from './solarsystem/Planet';
 import OrbitPath from './solarsystem/OrbitPath';
-import { planets } from '../data/planets';
+import { PlanetData, planets } from '../data/planets';
 
-const SolarSystem = () => {
+interface SolarSystemProps {
+  onPlanetClick?: (planetData: PlanetData) => void;
+}
 
+const SolarSystem: React.FC<SolarSystemProps> = ({ onPlanetClick }) => {
+  const mountRef = useRef<HTMLDivElement>(null);
   const sunRadius = 3;
 
   useEffect(() => {
+    if (!mountRef.current) return;
+
+    const toolbarHeight = 64; // Adjust if your toolbar height changes
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight - toolbarHeight;
+
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(75, viewportWidth / viewportHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer();
     const labelRenderer = new CSS2DRenderer();
 
     renderer.autoClear = false;
     renderer.domElement.className = 'solar-system-canvas';
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(viewportWidth, viewportHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    document.body.appendChild(renderer.domElement);
 
-    labelRenderer.setSize(window.innerWidth, window.innerHeight);
+    mountRef.current.appendChild(renderer.domElement);
+
+    labelRenderer.setSize(viewportWidth, viewportHeight);
     labelRenderer.domElement.style.position = 'absolute';
     labelRenderer.domElement.style.top = '0';
     labelRenderer.domElement.style.pointerEvents = 'none';
-    document.body.appendChild(labelRenderer.domElement);
+
+    mountRef.current.appendChild(labelRenderer.domElement);
 
     const renderScene = new RenderPass(scene, camera);
-    const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 2, 0.5, 0);
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(viewportWidth, viewportHeight), 2, 0.5, 0);
     const bloomComposer = new EffectComposer(renderer);
-    bloomComposer.setSize(window.innerWidth, window.innerHeight);
+    bloomComposer.setSize(viewportWidth, viewportHeight);
     bloomComposer.renderToScreen = true;
     bloomComposer.addPass(renderScene);
     bloomComposer.addPass(bloomPass);
@@ -46,8 +58,6 @@ const SolarSystem = () => {
     light.shadow.mapSize.width = 128;
     light.shadow.mapSize.height = 128;
     scene.add(light);
-
-    const planetPos = new THREE.Vector3(0, 0, 0);
 
     const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
     scene.add(ambientLight);
@@ -80,7 +90,7 @@ const SolarSystem = () => {
     });
 
     const planetObjects = planets.map((planet) =>
-      Planet({ ...planet, size: sunRadius * planet.size, scene })
+      Planet({ ...planet, size: sunRadius * planet.size, scene, planetData: planet, onPlanetClick: onPlanetClick })
     );
 
     camera.position.z = 30;
@@ -120,12 +130,36 @@ const SolarSystem = () => {
 
     animate();
 
+    const handleResize = () => {
+      const newViewportWidth = window.innerWidth;
+      const newViewportHeight = window.innerHeight - toolbarHeight;
+    
+      camera.aspect = newViewportWidth / newViewportHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(newViewportWidth, newViewportHeight);
+      labelRenderer.setSize(newViewportWidth, newViewportHeight);
+      bloomComposer.setSize(newViewportWidth, newViewportHeight);
+    };
+
+    window.addEventListener('resize', handleResize);
+
     return () => {
+      window.removeEventListener('resize', handleResize);
+
+      if (mountRef.current) {
+        if (renderer.domElement && mountRef.current.contains(renderer.domElement)) {
+          mountRef.current.removeChild(renderer.domElement);
+        }
+        if (labelRenderer.domElement && mountRef.current.contains(labelRenderer.domElement)) {
+          mountRef.current.removeChild(labelRenderer.domElement);
+        }
+      }
+
       renderer.dispose();
     };
-  }, []);
+  }, [onPlanetClick]);
 
-  return <div></div>; 
+  return <div ref={mountRef}></div>; 
 };
 
 export default SolarSystem;

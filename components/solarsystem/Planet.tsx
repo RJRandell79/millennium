@@ -1,3 +1,4 @@
+import { PlanetData } from '@/data/planets';
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 
@@ -7,10 +8,12 @@ interface PlanetProps {
   color: string;
   position: [number, number, number];
   orbitSpeed: number;
-  scene: THREE.Scene
+  scene: THREE.Scene;
+  onPlanetClick?: (planetName: PlanetData) => void;
+  planetData: PlanetData;
 }
 
-const Planet = ({ name, size, color, position, orbitSpeed, scene }: PlanetProps) => {
+const Planet = ({ name, size, color, position, orbitSpeed, scene, onPlanetClick, planetData }: PlanetProps) => {
   const planet = new THREE.Mesh(
     new THREE.SphereGeometry(size, 32, 32),
     new THREE.MeshStandardMaterial({ color, depthTest: true, transparent: false, opacity: 1 })
@@ -25,7 +28,12 @@ const Planet = ({ name, size, color, position, orbitSpeed, scene }: PlanetProps)
   labelDiv.textContent = name;
   labelDiv.style.marginTop = '-1em';
   labelDiv.style.pointerEvents = 'auto';
-  labelDiv.onclick = () => alert(`Clicked on ${name}`);
+  labelDiv.style.cursor = 'pointer';
+  labelDiv.onclick = () => {
+    if (onPlanetClick) {
+      onPlanetClick(planetData);
+    }
+  }
   const label = new CSS2DObject(labelDiv);
   label.position.set(0, size + 0.5, 0);
   planet.add(label);
