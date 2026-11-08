@@ -131,7 +131,7 @@ function Menu() {
           </div>
         ))}
         <div className="modal-actions">
-          <button className="btn ghost" onClick={exportSave}>Download save</button>
+          {window.self === window.top && <button className="btn ghost" onClick={exportSave}>Download save</button>}
           <button className="btn ghost" onClick={copySave}>Copy save</button>
           <button className="btn ghost" onClick={quit}>Title screen</button>
           <button className="btn" onClick={() => setMenu(false)}>Resume</button>
