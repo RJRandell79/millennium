@@ -19,7 +19,16 @@ function tryAct(s: GameState, r: { ok: boolean; state?: GameState }): GameState 
   return r.ok ? (r as { state: GameState }).state : s;
 }
 
-export interface BotOpts { conquest?: boolean }
+export type Opening = 'balanced' | 'defence' | 'asteroid' | 'research' | 'ceres';
+export interface BotOpts { conquest?: boolean; opening?: Opening }
+
+const OPENING_RESEARCH: Record<Opening, string[]> = {
+  balanced: [],
+  defence: ['orbitalLaser', 'interceptorMk2'],
+  asteroid: ['improvedRefining', 'factoryAutomation'],
+  research: ['labExpansion', 'surveyor', 'ionDrive'],
+  ceres: ['surveyor', 'colonyPods'],
+};
 
 export function botTurn(s: GameState, log: BotLog, opts: BotOpts = {}): GameState {
   const mb = moonbase(s);
@@ -27,7 +36,8 @@ export function botTurn(s: GameState, log: BotLog, opts: BotOpts = {}): GameStat
   if (!s.research.current) {
     const avail = researchList(s).filter((x) => x.status === 'available').map((x) => x.def.id)
       .filter((id) => !(opts.conquest && (id === 'mutationStudy' || id === 'retroviralTherapy')));
-    const next = RESEARCH_ORDER.find((id) => avail.includes(id)) ?? avail[0];
+    const order = s.day < 200 ? [...OPENING_RESEARCH[opts.opening ?? 'balanced'], ...RESEARCH_ORDER] : RESEARCH_ORDER;
+    const next = order.find((id) => avail.includes(id)) ?? avail[0];
     if (next) s = tryAct(s, setResearch(s, next));
   }
 
@@ -44,6 +54,17 @@ export function botTurn(s: GameState, log: BotLog, opts: BotOpts = {}): GameStat
   const done = (id: string) => s.research.done.includes(id);
   const e = mb.equipment;
   const power = mb.report.powerGen - mb.report.powerDemand;
+  const op = s.day < 200 ? (opts.opening ?? 'balanced') : 'balanced';
+  if (op === 'defence') {
+    if (e.fightersMk1 + e.fightersMk2 < 12 + 2 * s.threat.wave) want(done('interceptorMk2') && mb.stock.chromium > 600 ? 'interceptor2' : 'interceptor', 2);
+    if (done('orbitalLaser') && e.lasers < 4 + s.threat.wave) want('laser', 2);
+  }
+  if (op === 'asteroid') {
+    if (count('miner') + queued('miner') < 4) want('miner', 2);
+    if (done('improvedRefining') && e.refinery < 3) want('refinery', 2);
+  }
+  if (op === 'research' && done('labExpansion') && e.labs < 3) want('lab', 2);
+  if (op === 'ceres' && done('colonyPods') && count('colonyShip') + queued('colonyShip') < 1) want('colonyShip', 1);
   if (power < 3 && e.solar < 30) want('solar', 1);
   if (count('miner') < 2) want('miner', 1);
   if (e.fightersMk1 + e.fightersMk2 < 6 + s.threat.wave) want(done('interceptorMk2') && mb.stock.chromium > 600 ? 'interceptor2' : 'interceptor', 1);

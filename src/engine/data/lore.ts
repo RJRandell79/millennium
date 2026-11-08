@@ -22,7 +22,7 @@ export const STORY = {
   },
   signalAnalysis: {
     title: 'Signal analysis complete',
-    text: 'They call themselves the Ares Collective — descendants of the Mars colony that went silent in 2061. Two centuries of radiation and low gravity have changed them, and they are dying of it. Their tracking stations saw the asteroid coming. They warned no one. Now they mean to take Earth for themselves, and they see Moonbase as the only thing in the way. There may be two ways to end this: break their orbital defences and occupy Mars, or study their condition and offer a cure.',
+    text: 'They call themselves the Ares Collective — descendants of the Mars colony that went silent in 2061. Nearly 140 years of isolation, radiation and low gravity have changed them, and they are dying of it. Their tracking stations saw the asteroid coming. They warned no one. Now they mean to take Earth for themselves, and they see Moonbase as the only thing in the way. There may be two ways to end this: break their orbital defences and occupy Mars, or study their condition and offer a cure.',
   },
   mutationStudy: {
     title: 'The Collective is dying',

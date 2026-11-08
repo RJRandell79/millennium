@@ -28,7 +28,7 @@ export const BODIES: BodyDef[] = [
 
   P({ id: 'mars', name: 'Mars', kind: 'planet', a: 1.524, periodDays: 686.98, L0: 355.45, radiusKm: 3390, colony: 'special', mineable: 'colony',
     composition: { iron: 10, water: 4, silica: 6, uranium: 5, oxygen: 2, nitrogen: 1, sulphur: 2 },
-    hazard: 'Held by the Ares Collective', blurb: 'The Ares Collective: descendants of the old Mars colony, changed by two centuries of radiation and low gravity. They want Earth.', color: '#d9653b' }),
+    hazard: 'Held by the Ares Collective', blurb: 'The Ares Collective: descendants of the old Mars colony, changed by nearly 140 years of isolation, radiation and low gravity. They want Earth.', color: '#d9653b' }),
   P({ id: 'phobos', name: 'Phobos', kind: 'moon', parent: 'mars', a: 2.8, periodDays: 0.32, L0: 0, radiusKm: 11, colony: 'none', mineable: 'colony',
     composition: { silica: 5, iron: 3, water: 2, silver: 4, copper: 2 },
     hazard: 'Within striking distance of Mars', blurb: 'A captured carbonaceous rubble-pile. Silver traces — but the Collective is watching.', color: '#8f7f72' }),
