@@ -1,0 +1,238 @@
+import type { Cost, DeptId, GameState, Installation, MaterialId } from './types';
+import { LS_MATS, LS_PER_PERSON, canAfford, pay } from './data/materials';
+import { BLUEPRINT_BY_ID } from './data/blueprints';
+import { RESEARCH_BY_ID } from './data/research';
+import { STORY } from './data/lore';
+import { sunDistance } from './orbits';
+import { msg, popCap, setFlag } from './util';
+import { addShip } from './newGame';
+
+/** Power allocation order: the first departments get power first. */
+export const POWER_ORDER: DeptId[] = ['lifeSupport', 'defence', 'flightDeck', 'refinery', 'production', 'research'];
+
+export const MINE_BASE = 250; // kg/day per abundance point
+
+export function deptHealth(inst: Installation, d: DeptId): number {
+  const st = inst.depts[d];
+  if (!st) return 0;
+  return 1 - st.damage / 100;
+}
+
+export function solarPerArray(s: GameState, inst: Installation): number {
+  const r = sunDistance(inst.bodyId, s.day);
+  let out = 2 / (r * r);
+  if (inst.bodyId === 'titan') out *= 0.2; // haze
+  if (s.modifiers.some((m) => m.kind === 'solarFlare') && r < 2 && inst.equipment.shields === 0) out *= 0.4;
+  return out;
+}
+
+export function powerGeneration(s: GameState, inst: Installation): number {
+  const e = inst.equipment;
+  const raw = e.solar * solarPerArray(s, inst) + e.reactor * 10 + e.fusion * 40;
+  const energy = inst.depts.energy;
+  if (!energy || !energy.online) return 0;
+  return raw * deptHealth(inst, 'energy');
+}
+
+export function deptDemand(inst: Installation, d: DeptId): number {
+  const st = inst.depts[d];
+  if (!st || !st.online) return 0;
+  const e = inst.equipment;
+  switch (d) {
+    case 'lifeSupport': return 0.5 + 0.02 * inst.population;
+    case 'defence': return 0.5 + 0.5 * e.lasers + 2 * e.shields;
+    case 'flightDeck': return inst.isMoonBase ? 1 : 0.5;
+    case 'refinery': return (inst.isMoonBase ? 4 : 2) + e.refinery;
+    case 'production': return 3 * (1 + e.factories);
+    case 'research': return 2 * (1 + e.labs);
+    default: return 0;
+  }
+}
+
+export function workforce(inst: Installation): number {
+  return inst.isMoonBase ? 0.6 + 0.4 * (inst.population / 100) : 0.3 + 1.2 * (inst.population / 100);
+}
+
+export function lsNeed(inst: Installation): Record<'oxygen' | 'water' | 'nitrogen', number> {
+  const p = inst.population;
+  return { oxygen: p * LS_PER_PERSON.oxygen, water: p * LS_PER_PERSON.water, nitrogen: p * LS_PER_PERSON.nitrogen };
+}
+
+/** Expected mining output per day at current efficiency. */
+export function miningRates(s: GameState, inst: Installation, eff: number): Cost {
+  const body = s.bodies[inst.bodyId];
+  const rich = body.richUntil && body.richUntil > s.day ? 1.5 : 1;
+  const mult = MINE_BASE * (1 + 0.3 * inst.equipment.refinery) * eff * workforce(inst) * rich;
+  const out: Cost = {};
+  for (const [k, v] of Object.entries(body.composition)) {
+    if (v && v > 0) out[k as MaterialId] = v * mult;
+  }
+  return out;
+}
+
+/** Run one day of power, life support, mining, repair (+ research & production at Moonbase). */
+export function runInstallation(s: GameState, inst: Installation): void {
+  const gen = powerGeneration(s, inst);
+  let left = gen;
+  let demand = 0;
+  const eff: Partial<Record<DeptId, number>> = {};
+  for (const d of POWER_ORDER) {
+    if (!inst.depts[d]) continue;
+    const need = deptDemand(inst, d);
+    demand += need;
+    if (need <= 0) { eff[d] = 0; continue; }
+    const alloc = Math.min(need, left);
+    left -= alloc;
+    eff[d] = (alloc / need) * deptHealth(inst, d);
+  }
+  eff.energy = inst.depts.energy?.online ? deptHealth(inst, 'energy') : 0;
+
+  // Mining
+  const mined: Cost = {};
+  if ((eff.refinery ?? 0) > 0) {
+    const rates = miningRates(s, inst, eff.refinery!);
+    for (const [k, v] of Object.entries(rates)) {
+      inst.stock[k as MaterialId] += v!;
+      mined[k as MaterialId] = v!;
+      s.stats.kgMined += v!;
+    }
+  }
+
+  // Life support
+  const need = lsNeed(inst);
+  const lsEff = eff.lifeSupport ?? 0;
+  // A struggling life-support plant recycles less: up to 2× losses.
+  const lossMult = 1 + (1 - lsEff);
+  const consumed: Cost = {};
+  let ok = lsEff >= 0.5;
+  let daysOfSupplies = 999;
+  for (const m of LS_MATS) {
+    const n = need[m as 'oxygen'] * lossMult;
+    const take = Math.min(n, inst.stock[m]);
+    inst.stock[m] -= take;
+    consumed[m] = take;
+    if (take < n - 0.001) ok = false;
+    const net = (mined[m] ?? 0) - n;
+    if (net < 0) daysOfSupplies = Math.min(daysOfSupplies, inst.stock[m] / -net);
+  }
+
+  if (!ok && inst.population > 0) {
+    inst.shortageDays += 1;
+    if (inst.shortageDays === 1) {
+      msg(s, 'alert', `${inst.name}: life support failing`, lsEff < 0.5
+        ? 'Life support is short of power. Bring departments offline or build more power generation.'
+        : 'Oxygen, water or nitrogen has run out. Get supplies there now.', inst.id);
+    }
+    if (inst.shortageDays > 2) {
+      const deaths = Math.max(1, Math.ceil(inst.population * 0.03));
+      inst.population = Math.max(0, inst.population - deaths);
+      if (inst.shortageDays % 5 === 3) msg(s, 'warn', `${inst.name}: casualties`, `${deaths} people died today. Population ${Math.floor(inst.population)}.`, inst.id);
+    }
+  } else {
+    if (inst.shortageDays > 0) msg(s, 'good', `${inst.name}: life support restored`, 'Supplies and power are back to normal.', inst.id);
+    inst.shortageDays = 0;
+    const cap = popCap(inst);
+    if (lsEff >= 0.95 && inst.population < cap) {
+      const rate = inst.isMoonBase ? 0.004 : 0.0025;
+      inst.population = Math.min(cap, inst.population + Math.max(0.05, inst.population * rate));
+    }
+  }
+
+  // Repairs (auto, uses titanium + aluminium)
+  const repairRate = inst.isMoonBase ? 3 : 1.5;
+  for (const d of Object.keys(inst.depts) as DeptId[]) {
+    const st = inst.depts[d]!;
+    if (st.damage <= 0) continue;
+    const pts = Math.min(st.damage, repairRate);
+    const cost = { titanium: pts * 40, aluminium: pts * 20 };
+    if (canAfford(inst.stock, cost)) {
+      pay(inst.stock, cost);
+      st.damage = Math.max(0, st.damage - pts);
+    } else {
+      // Improvised repairs without metal: slow.
+      st.damage = Math.max(0, st.damage - 0.5);
+    }
+  }
+
+  inst.report = { powerGen: gen, powerDemand: demand, deptEff: eff, mined, consumed, lifeSupportOk: ok, daysOfSupplies };
+
+  if (inst.isMoonBase) {
+    runResearch(s, inst, eff.research ?? 0);
+    runProduction(s, inst, eff.production ?? 0);
+  }
+}
+
+export function researchRate(inst: Installation, eff: number): number {
+  return (1 + inst.equipment.labs) * eff * workforce(inst);
+}
+
+function runResearch(s: GameState, inst: Installation, eff: number): void {
+  const r = s.research;
+  if (!r.current) return;
+  const def = RESEARCH_BY_ID[r.current];
+  r.progress += researchRate(inst, eff);
+  if (r.progress >= def.days) {
+    r.done.push(def.id);
+    r.current = undefined;
+    r.progress = 0;
+    msg(s, 'good', `Research complete: ${def.name}`, `Unlocked: ${def.unlocks}.`);
+    if (def.id === 'signalAnalysis') { setFlag(s, 'intel'); msg(s, 'story', STORY.signalAnalysis.title, STORY.signalAnalysis.text); }
+    if (def.id === 'mutationStudy') msg(s, 'story', STORY.mutationStudy.title, STORY.mutationStudy.text);
+  }
+}
+
+export function productionRate(inst: Installation, eff: number): number {
+  return eff * workforce(inst);
+}
+
+function runProduction(s: GameState, inst: Installation, eff: number): void {
+  let slots = 1 + inst.equipment.factories;
+  const work = productionRate(inst, eff);
+  const finished: string[] = [];
+  for (const item of s.queue) {
+    if (slots <= 0) break;
+    const bp = BLUEPRINT_BY_ID[item.blueprintId];
+    if (!item.started) {
+      if (!canAfford(inst.stock, bp.cost)) continue; // waits for materials; later items may proceed
+      pay(inst.stock, bp.cost);
+      item.started = true;
+    }
+    slots -= 1;
+    item.progress += work;
+    if (item.progress >= bp.days) finished.push(item.id);
+  }
+  for (const id of finished) {
+    const idx = s.queue.findIndex((q) => q.id === id);
+    const item = s.queue[idx];
+    s.queue.splice(idx, 1);
+    completeBuild(s, item.blueprintId, item.targetId);
+    if (item.repeat) s.queue.push({ ...item, id: `${item.id}r${s.day}`, progress: 0, started: false });
+  }
+}
+
+export function completeBuild(s: GameState, blueprintId: string, targetId: string): void {
+  const bp = BLUEPRINT_BY_ID[blueprintId];
+  if (bp.ship) {
+    const ship = addShip(s, bp.ship, 'moon');
+    s.stats.shipsBuilt += 1;
+    msg(s, 'good', `${bp.name} ready`, `${ship.name} is docked on the flight deck.`, ship.id);
+    return;
+  }
+  if (bp.terraformer) {
+    s.earth.engines += 1;
+    if (s.earth.engines === 1) msg(s, 'story', STORY.terraformStart.title, STORY.terraformStart.text, 'earth');
+    else msg(s, 'good', 'Terraforming Engine landed', `${s.earth.engines} engines are now working on Earth.`, 'earth');
+    return;
+  }
+  if (bp.equip) {
+    const target = s.installations[targetId];
+    if (!target) return;
+    if (target.isMoonBase) {
+      target.equipment[bp.equip] += 1;
+      msg(s, 'info', `${bp.name} installed`, `Installed at Moonbase.`);
+    } else {
+      s.consignments.push({ id: `cn${s.nextId++}`, blueprintId, installationId: targetId });
+      msg(s, 'info', `${bp.name} crated`, `Waiting on the flight deck for the next freighter to ${target.name}.`, targetId);
+    }
+  }
+}
