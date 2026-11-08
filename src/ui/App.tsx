@@ -104,12 +104,19 @@ function Menu() {
   const showToast = useGame((s) => s.showToast);
   if (!open || !game) return null;
   const exportSave = () => {
-    const blob = new Blob([serialize(game)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `millennium-day${game.day}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    try {
+      const blob = new Blob([serialize(game)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `millennium-day${game.day}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch { showToast('Download blocked here — use Copy save instead.'); }
+  };
+  const copySave = () => {
+    navigator.clipboard.writeText(serialize(game))
+      .then(() => showToast('Save copied — paste it into a .json file to keep it.', 'info'))
+      .catch(() => showToast('Clipboard not available here.'));
   };
   return (
     <div className="modal-back" onClick={() => setMenu(false)}>
@@ -124,7 +131,8 @@ function Menu() {
           </div>
         ))}
         <div className="modal-actions">
-          <button className="btn ghost" onClick={exportSave}>Export save</button>
+          <button className="btn ghost" onClick={exportSave}>Download save</button>
+          <button className="btn ghost" onClick={copySave}>Copy save</button>
           <button className="btn ghost" onClick={quit}>Title screen</button>
           <button className="btn" onClick={() => setMenu(false)}>Resume</button>
         </div>
