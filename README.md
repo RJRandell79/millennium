@@ -28,6 +28,7 @@ npm run build:single   # one self-contained index.html in dist-single/
 * **The Ares Collective** launch escalating raids you can see coming on the map. Lasers fire first, fighters next, shields soak damage.
 * **Two ways to end the war:** conquest (battlecruisers + troopship) or the Accord (study salvage, develop a cure, send a hospital ship).
 * **Win** by probing Earth, researching terraforming and keeping Terraforming Engines fed until Earth is restored.
+* **The Archive:** documents recovered as research brings old designs back into use. They file quietly (a badge, never a pause) and piece together what happened before the impact. The Menu shows how the archive has been used, for playtests.
 
 ### Modern fixes to the original's complaints
 
@@ -44,7 +45,7 @@ src/engine/   pure TypeScript game engine — no React, deterministic, JSON stat
   tick.ts     advanceDay(): installations → fleet → Earth → threat → events → win/lose
   actions.ts  player commands: (state, args) → new state | error
 src/store/    Zustand store: wraps engine, run loop, saves
-src/ui/       React panels: Base, System map (canvas), Fleet, Research, Build, Log
+src/ui/       React panels: Base, System map (canvas), Fleet, Research, Build, Log, Archive
 tests/        Vitest: orbits, determinism, save round-trip, and a scripted bot that plays full games
 .github/      CI: typecheck, tests, build; uploads the single-file playable for every push and PR
 ```

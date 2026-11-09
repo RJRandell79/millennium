@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGame, readAutosave } from '../store/useGame';
-import { formatDate, score, serialize, totalPopulation, type GameSettings } from '../engine';
+import { archiveStats, formatDate, score, serialize, totalPopulation, type GameSettings } from '../engine';
 import { TopBar } from './TopBar';
 import { TabBar } from './TabBar';
 import { BasePanel } from './panels/BasePanel';
@@ -9,6 +9,7 @@ import { FleetPanel } from './panels/FleetPanel';
 import { ResearchPanel } from './panels/ResearchPanel';
 import { BuildPanel } from './panels/BuildPanel';
 import { LogPanel } from './panels/LogPanel';
+import { ArchivePanel } from './panels/ArchivePanel';
 
 export function App() {
   const game = useGame((s) => s.game);
@@ -40,6 +41,7 @@ function GameShell() {
         {tab === 'research' && <ResearchPanel />}
         {tab === 'build' && <BuildPanel />}
         {tab === 'log' && <LogPanel />}
+        {tab === 'archive' && <ArchivePanel />}
       </main>
       <TabBar />
       <Toast />
@@ -123,6 +125,7 @@ function Menu() {
       <div className="modal menu" onClick={(e) => e.stopPropagation()}>
         <h2>Menu</h2>
         <p className="muted small">Seed {game.seed} · {game.settings.difficulty} · {game.settings.varied ? 'varied worlds' : 'classic worlds'}. The game autosaves every 5 days.</p>
+        <ArchiveStatsLine />
         {[1, 2, 3].map((n) => (
           <div key={n} className="slot">
             <span>Slot {n}: <span className="muted">{slotInfo(n) ?? 'empty'}</span></span>
@@ -139,6 +142,18 @@ function Menu() {
         <HowTo />
       </div>
     </div>
+  );
+}
+
+/** Playtest readout: how the archive has been used this game. */
+function ArchiveStatsLine() {
+  const game = useGame((s) => s.game)!;
+  const a = archiveStats(game);
+  if (!a.found) return null;
+  return (
+    <p className="muted small">
+      Archive: {a.found} recovered · {a.read} opened{a.medianDaysToOpen !== null ? ` · median ${a.medianDaysToOpen} days to open` : ''} · {a.interruptedPlay} opened mid-run · {a.reopened} reopened
+    </p>
   );
 }
 

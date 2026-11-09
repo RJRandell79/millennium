@@ -92,11 +92,12 @@ function runEvents(s: GameState): void {
     msg(s, 'good', `Rich seam: ${c.name}`, 'Geologists have hit a rich seam. Mining output +50% for 30 days.', c.id);
   }
   const mb = moonbase(s);
-  if (s.day < 500 && s.flags.filter((f) => f.startsWith('survivors')).length < 3 && chance(s, 0.0015)) {
+  // Survivors can only find Moonbase while the comms watch is listening on the rescue bands.
+  if (s.day < 500 && s.flags.filter((f) => f.startsWith('survivors')).length < 3 && chance(s, 0.0015) && mb.commsWatch) {
     const n = randInt(s, 4, 12);
     s.flags.push(`survivors${s.day}`);
     mb.population += n;
-    msg(s, 'good', 'Survivors!', `A lifeboat from a pre-impact orbital station has docked with ${n} survivors aboard.`);
+    msg(s, 'good', 'Survivors!', `A lifeboat from a pre-impact orbital station has docked with ${n} survivors aboard. It homed in on the comms watch's rescue band.`);
   }
 }
 

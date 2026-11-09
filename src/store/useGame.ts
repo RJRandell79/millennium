@@ -4,7 +4,7 @@ import {
   advanceDay, newGame, serialize, deserialize, markRead, BODY_BY_ID, type ShipType,
 } from '../engine';
 
-export type Tab = 'base' | 'map' | 'fleet' | 'research' | 'build' | 'log';
+export type Tab = 'base' | 'map' | 'fleet' | 'research' | 'build' | 'log' | 'archive';
 export type Speed = 'paused' | 'run' | 'fast';
 export type FleetStatusFilter = 'all' | 'idle' | 'docked' | 'transit' | 'working';
 export interface FleetFilter { status: FleetStatusFilter; type: ShipType | 'all' }

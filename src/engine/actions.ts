@@ -6,7 +6,8 @@ import { pay, stockFrom } from './data/materials';
 import { BODY_BY_ID } from './data/bodies';
 import { colonyRequirementMet, launch, startLoop, returnHome } from './fleet';
 import { equipCount, missionsFor, researchStatus } from './selectors';
-import { clone, moonbase, newId } from './util';
+import { clone, moonbase, msg, newId, setFlag } from './util';
+import { STORY } from './data/lore';
 
 export type ActionResult = { ok: true; state: GameState } | { ok: false; error: string };
 
@@ -19,6 +20,39 @@ export function toggleDept(prev: GameState, instId: string, dept: DeptId): Actio
   if (!d) return fail('No such department');
   if (dept === 'lifeSupport' && d.online) return fail('Switching off life support would kill everyone.');
   d.online = !d.online;
+  return ok(s);
+}
+
+/**
+ * Switch Moonbase's comms watch on or off. The first attempt to switch it off draws one objection
+ * from the deputy commander and changes nothing; asking again switches it off.
+ */
+export function toggleCommsWatch(prev: GameState): ActionResult {
+  const s = clone(prev);
+  const mb = moonbase(s);
+  if (!mb.commsWatch) {
+    mb.commsWatch = true;
+    return ok(s);
+  }
+  if (setFlag(s, 'commsObjection')) {
+    msg(s, 'story', STORY.commsObjection.title, STORY.commsObjection.text);
+    return ok(s);
+  }
+  mb.commsWatch = false;
+  msg(s, 'info', STORY.commsOff.title, STORY.commsOff.text);
+  return ok(s);
+}
+
+/** Open an archive document. Records when, and whether it interrupted a running clock. */
+export function readFragment(prev: GameState, id: string, clockRunning = false): ActionResult {
+  const s = clone(prev);
+  const e = s.archive.find((x) => x.id === id);
+  if (!e) return fail('Not in the archive');
+  e.opens += 1;
+  if (e.firstReadDay === undefined) {
+    e.firstReadDay = s.day;
+    e.firstReadWhileRunning = clockRunning;
+  }
   return ok(s);
 }
 

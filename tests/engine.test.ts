@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   newGame, advanceDay, advanceUntilEvent, serialize, deserialize, sendShip, queueBuild, setResearch,
-  travelDays, position, moonbase, toggleDept, raidSize,
+  travelDays, position, moonbase, toggleDept, raidSize, toggleCommsWatch, readFragment, deptDemand,
+  archiveStats, FRAGMENTS, RESEARCH_BY_ID, COMMS_WATCH_MW, type GameState,
 } from '../src/engine';
 import { playBot } from './bot';
 
@@ -75,6 +76,84 @@ describe('core loop', () => {
   it('escalates raids', () => {
     const s = newGame(5);
     expect(raidSize(s, 10).ships).toBeGreaterThan(raidSize(s, 1).ships);
+  });
+});
+
+const okState = (r: { ok: boolean }) => (r as unknown as { state: GameState }).state;
+
+describe('comms watch', () => {
+  it('is a visible 0.4 MW load under Moonbase life support, and nowhere else', () => {
+    const s = newGame(1);
+    const mb = moonbase(s);
+    expect(mb.commsWatch).toBe(true);
+    const with_ = deptDemand(mb, 'lifeSupport');
+    expect(deptDemand({ ...mb, commsWatch: false }, 'lifeSupport')).toBeCloseTo(with_ - COMMS_WATCH_MW, 6);
+    expect(mb.report.powerDemand).toBeGreaterThan(0);
+    expect(mb.report.powerGen).toBeGreaterThan(mb.report.powerDemand);
+  });
+
+  it('draws one objection, then obeys, and can be switched back on', () => {
+    let s = newGame(1);
+    s = okState(toggleCommsWatch(s));
+    expect(moonbase(s).commsWatch).toBe(true);
+    expect(s.messages.at(-1)!.kind).toBe('story');
+    s = okState(toggleCommsWatch(s));
+    expect(moonbase(s).commsWatch).toBe(false);
+    s = okState(toggleCommsWatch(s));
+    expect(moonbase(s).commsWatch).toBe(true);
+    // No second objection.
+    const before = s.messages.length;
+    s = okState(toggleCommsWatch(s));
+    expect(moonbase(s).commsWatch).toBe(false);
+    expect(s.messages.slice(before).some((m) => m.kind === 'story')).toBe(false);
+  });
+
+  it('survivors cannot find Moonbase while it is off', () => {
+    for (const seed of [2, 3, 4, 5]) {
+      let s = newGame(seed);
+      moonbase(s).commsWatch = false;
+      for (let i = 0; i < 499; i++) s = advanceDay(s).state;
+      expect(s.flags.some((f) => f.startsWith('survivors'))).toBe(false);
+    }
+  });
+});
+
+describe('archive', () => {
+  it('every fragment is triggered by a real project and stays within 30 to 150 words', () => {
+    for (const f of FRAGMENTS) {
+      expect(RESEARCH_BY_ID[f.trigger.id], f.id).toBeDefined();
+      const words = f.body.split(/\s+/).filter(Boolean).length;
+      expect(words, f.id).toBeGreaterThanOrEqual(30);
+      expect(words, f.id).toBeLessThanOrEqual(150);
+    }
+  });
+
+  it('recovers a document quietly when its project completes, and records reading', () => {
+    let s = newGame(5);
+    s = okState(setResearch(s, 'surveyor'));
+    for (let i = 0; i < 10; i++) s = advanceDay(s).state;
+    expect(s.archive.map((e) => e.id)).toContain('W1');
+    expect(s.messages.some((m) => m.kind === 'story' && m.day > 0)).toBe(false);
+    expect(archiveStats(s)).toMatchObject({ found: 1, read: 0 });
+    const day = s.archive[0].day;
+    for (let i = 0; i < 3; i++) s = advanceDay(s).state;
+    s = okState(readFragment(s, 'W1', true));
+    s = okState(readFragment(s, 'W1'));
+    expect(archiveStats(s)).toMatchObject({ found: 1, read: 1, reopened: 1, interruptedPlay: 1, medianDaysToOpen: s.day - day });
+  });
+
+  it('upgrades a version 1 save: the watch is on and past research is in the archive', () => {
+    let s = newGame(5);
+    s = okState(setResearch(s, 'surveyor'));
+    for (let i = 0; i < 10; i++) s = advanceDay(s).state;
+    const old = JSON.parse(serialize(s));
+    old.version = 1;
+    delete old.archive;
+    delete old.installations.moonbase.commsWatch;
+    const up = deserialize(JSON.stringify(old));
+    expect(up.version).toBe(2);
+    expect(moonbase(up).commsWatch).toBe(true);
+    expect(up.archive.map((e) => e.id)).toEqual(['W1']);
   });
 });
 
