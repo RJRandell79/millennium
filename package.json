@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "build:single": "tsc --noEmit && vite build --mode single",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "experiment": "EXPERIMENT=1 vitest run tests/openings.experiment.test.ts"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -23,5 +24,8 @@
     "vite": "^5.4.21",
     "vite-plugin-singlefile": "^2.3.4",
     "vitest": "^2.1.9"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

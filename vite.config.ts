@@ -7,5 +7,11 @@ export default defineConfig(({ mode }) => ({
   plugins: mode === 'single' ? [react(), viteSingleFile()] : [react()],
   base: './',
   build: { outDir: mode === 'single' ? 'dist-single' : 'dist' },
-  test: { globals: true, environment: 'node', include: ['tests/**/*.test.ts'] },
+  test: {
+    globals: true,
+    environment: 'node',
+    include: ['tests/**/*.test.ts'],
+    // Balance experiments are slow and print reports rather than assert: run with `npm run experiment`.
+    exclude: process.env.EXPERIMENT ? [] : ['tests/**/*.experiment.test.ts'],
+  },
 }));

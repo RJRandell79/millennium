@@ -12,6 +12,7 @@ TypeScript + React + Zustand, mobile-first, playable on a phone.
 npm install
 npm run dev            # local dev server
 npm test               # engine tests incl. full scripted playthroughs
+npm run experiment     # opening-strategy balance report (slow, prints a table)
 npm run build          # static build in dist/
 npm run build:single   # one self-contained index.html in dist-single/
 ```
@@ -45,6 +46,7 @@ src/engine/   pure TypeScript game engine — no React, deterministic, JSON stat
 src/store/    Zustand store: wraps engine, run loop, saves
 src/ui/       React panels: Base, System map (canvas), Fleet, Research, Build, Log
 tests/        Vitest: orbits, determinism, save round-trip, and a scripted bot that plays full games
+.github/      CI: typecheck, tests, build; uploads the single-file playable for every push and PR
 ```
 
 The engine is seeded (Mulberry32) and every tick is a pure function, so a save reloads and replays identically.

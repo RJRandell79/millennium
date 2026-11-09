@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main, remake-v2]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Typecheck, test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Engine tests (incl. full scripted playthroughs)
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Build single-file playable
+        run: npm run build:single
+
+      - name: Upload playable build
+        uses: actions/upload-artifact@v4
+        with:
+          name: millennium-playable-${{ github.sha }}
+          path: dist-single/index.html
+          retention-days: 14
