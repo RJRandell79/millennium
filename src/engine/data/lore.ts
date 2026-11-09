@@ -108,7 +108,7 @@ export const FRAGMENTS: FragmentDef[] = [
     id: 'L1', mystery: 'shackleton', trigger: { kind: 'research', id: 'improvedRefining' },
     author: 'Off-World Authority, Lunar Programmes', dated: '2094',
     title: 'Shackleton Station: founding budget',
-    body: 'Regolith refinery and fabrication shops: 18%. Habitat for 60, expandable to 100: 22%. Solar farm on the rim ridges: 12%. Ice extraction, crater floor: 9%. Deep-space antenna, 34 m, cryogenic receiver: 33%. Contingency: 6%.\n\n[Note, Moonbase: Found this digging out the refinery specs. A third of the money went on the big dish. I have kept that refinery running for nine years and never seen a science programme book time on it. Must have been the fashion in 2094. — T. Wójcik]',
+    body: 'Regolith refinery and fabrication shops: 18%. Habitat for 60, expandable to 100: 22%. Solar farm on the rim ridges: 12%. Ice extraction, crater floor: 9%. Deep-space antenna, 34 m, cryogenic receiver: 33%. Contingency: 6%.\n\n[Note, Moonbase: Found this digging out the refinery specs. A third of the money went on the big dish. I came out to rebuild that refinery sixteen years ago, and in all that time I have never seen a science programme book time on the dish. Must have been the fashion in 2094. — T. Wójcik]',
     reveals: 'A third of Shackleton\'s founding budget went on a 34 m dish that the science programme never used.',
   },
   {
