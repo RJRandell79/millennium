@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useGame } from '../../store/useGame';
+import { useGame, type FleetStatusFilter } from '../../store/useGame';
 import {
-  type GameState, type Ship, BODY_BY_ID, SHIP_SPECS, MATERIAL_IDS, MATERIAL_BY_ID, BLUEPRINT_BY_ID,
+  type GameState, type Ship, type ShipType, BODY_BY_ID, SHIP_SPECS, MATERIAL_IDS, MATERIAL_BY_ID, BLUEPRINT_BY_ID,
   missionsFor, sendShip, setFreighterRoute, recallShip, launchAssault, formatDate, fmtKg, stockTotal, fuelFor,
 } from '../../engine';
 import { Bar, Empty, Section } from '../components/common';
@@ -11,27 +11,119 @@ const PURPOSE: Record<string, string> = {
   haulOut: 'Supply run to', haulBack: 'Returning with ore from', return: 'Returning to Moonbase from', assault: 'Assault on', accord: 'Peace mission to',
 };
 
+const STATUS_CHIPS: { id: FleetStatusFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'idle', label: 'Idle' },
+  { id: 'docked', label: 'Docked' },
+  { id: 'transit', label: 'In transit' },
+  { id: 'working', label: 'Working' },
+];
+
+const TYPE_ORDER: ShipType[] = ['probe', 'surveyor', 'colonyShip', 'freighter', 'miner', 'gasScoop', 'battlecruiser', 'troopship', 'hospitalShip'];
+const TYPE_PLURAL: Record<ShipType, string> = {
+  probe: 'Probes', surveyor: 'Survey ships', colonyShip: 'Colony ships', freighter: 'Freighters', miner: 'Miners',
+  gasScoop: 'Gas scoops', battlecruiser: 'Battlecruisers', troopship: 'Troopships', hospitalShip: 'Hospital ships',
+};
+
+/** Idle = on the Moonbase flight deck with no standing route: ready for orders. */
+export function isIdle(s: Ship): boolean {
+  return s.status === 'docked' && s.at === 'moon' && !s.routeTo;
+}
+
+function matchesStatus(s: Ship, f: FleetStatusFilter): boolean {
+  switch (f) {
+    case 'all': return true;
+    case 'idle': return isIdle(s);
+    case 'docked': return s.status === 'docked';
+    case 'transit': return s.status === 'transit';
+    case 'working': return s.status === 'working';
+  }
+}
+
+/** Keep a tapped chip fully on screen in a sideways-scrolling row. */
+function reveal(e: React.MouseEvent<HTMLButtonElement>) {
+  e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+}
+
+function byFleetOrder(a: Ship, b: Ship): number {
+  if (a.status === 'transit' && b.status === 'transit') return (a.transit?.arriveDay ?? 0) - (b.transit?.arriveDay ?? 0);
+  const t = TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type);
+  return t !== 0 ? t : a.name.localeCompare(b.name);
+}
+
 export function FleetPanel() {
   const game = useGame((s) => s.game)!;
   const act = useGame((s) => s.act);
+  const filter = useGame((s) => s.fleetFilter);
+  const setFilter = useGame((s) => s.setFleetFilter);
   const ships = Object.values(game.ships);
-  const docked = ships.filter((s) => s.status === 'docked');
-  const away = ships.filter((s) => s.status !== 'docked');
   const fd = game.installations.moonbase.depts.flightDeck!;
-  const warships = docked.filter((s) => s.type === 'battlecruiser' || s.type === 'troopship');
+
+  // If the chosen type no longer exists (e.g. last probe launched), fall back to all types.
+  const ownedTypes = TYPE_ORDER.filter((t) => ships.some((s) => s.type === t));
+  const typeFilter = filter.type !== 'all' && !ownedTypes.includes(filter.type) ? 'all' : filter.type;
+  const ofType = (s: Ship) => typeFilter === 'all' || s.type === typeFilter;
+
+  const statusCount = (f: FleetStatusFilter) => ships.filter((s) => ofType(s) && matchesStatus(s, f)).length;
+  const typeCount = (t: ShipType | 'all') => ships.filter((s) => (t === 'all' || s.type === t) && matchesStatus(s, filter.status)).length;
+
+  const shown = ships.filter((s) => ofType(s) && matchesStatus(s, filter.status));
+  const docked = shown.filter((s) => s.status === 'docked').sort(byFleetOrder);
+  const away = shown.filter((s) => s.status !== 'docked').sort(byFleetOrder);
+  const warships = ships.filter((s) => (s.type === 'battlecruiser' || s.type === 'troopship') && s.status === 'docked' && s.at === 'moon');
+  const filtered = filter.status !== 'all' || typeFilter !== 'all';
+  const showAssault = warships.length > 0 && game.threat.status === 'hostile'
+    && ['all', 'idle', 'docked'].includes(filter.status) && ['all', 'battlecruiser', 'troopship'].includes(typeFilter);
+
   return (
     <div className="stack">
       {(!fd.online || fd.damage >= 90) && <p className="warn-text panel">The flight deck is {fd.online ? 'too damaged' : 'offline'} — nothing can launch.</p>}
-      <Section title={`Flight deck — ${docked.length} docked`}>
-        {docked.length ? docked.map((s) => <ShipCard key={s.id} game={game} ship={s} />) : <Empty>No ships docked. Build some in the Build tab.</Empty>}
-        {warships.length > 0 && game.threat.status === 'hostile' && (
-          <button className="btn wide danger" onClick={() => act(launchAssault, 'Assault fleet launched for Mars')}>Launch assault on Mars</button>
+
+      <section className="panel fleet-filters" aria-label="Filter craft">
+        <div className="chiprow" role="group" aria-label="Status">
+          {STATUS_CHIPS.map((c) => (
+            <button key={c.id} className={`fchip ${filter.status === c.id ? 'on' : ''} ${c.id === 'idle' && statusCount('idle') ? 'attn' : ''} ${statusCount(c.id) ? '' : 'zero'}`}
+              aria-pressed={filter.status === c.id} onClick={(e) => { reveal(e); setFilter({ status: c.id }); }}>
+              {c.label} <span className="fchip-n">{statusCount(c.id)}</span>
+            </button>
+          ))}
+        </div>
+        {ownedTypes.length > 1 && (
+          <div className="chiprow" role="group" aria-label="Craft type">
+            <button className={`fchip ${typeFilter === 'all' ? 'on' : ''}`} aria-pressed={typeFilter === 'all'} onClick={(e) => { reveal(e); setFilter({ type: 'all' }); }}>
+              All types <span className="fchip-n">{typeCount('all')}</span>
+            </button>
+            {ownedTypes.map((t) => (
+              <button key={t} className={`fchip ${typeFilter === t ? 'on' : ''} ${typeCount(t) ? '' : 'zero'}`} aria-pressed={typeFilter === t} onClick={(e) => { reveal(e); setFilter({ type: t }); }}>
+                {TYPE_PLURAL[t]} <span className="fchip-n">{typeCount(t)}</span>
+              </button>
+            ))}
+          </div>
         )}
-      </Section>
-      <Section title={`In space — ${away.length}`}>
-        {away.length ? away.sort((a, b) => (a.transit?.arriveDay ?? 1e9) - (b.transit?.arriveDay ?? 1e9)).map((s) => <ShipCard key={s.id} game={game} ship={s} />) : <Empty>Nothing in flight.</Empty>}
-      </Section>
-      {game.consignments.length > 0 && (
+      </section>
+
+      {showAssault && (
+        <button className="btn wide danger" onClick={() => act(launchAssault, 'Assault fleet launched for Mars')}>Launch assault on Mars</button>
+      )}
+
+      {filter.status === 'all' ? (
+        <>
+          <Section title={`Flight deck — ${docked.length} docked`}>
+            {docked.length ? docked.map((s) => <ShipCard key={s.id} game={game} ship={s} />) : <Empty>{filtered ? 'None of these are docked.' : 'No ships docked. Build some in the Build tab.'}</Empty>}
+          </Section>
+          <Section title={`In space — ${away.length}`}>
+            {away.length ? away.map((s) => <ShipCard key={s.id} game={game} ship={s} />) : <Empty>{filtered ? 'None of these are in space.' : 'Nothing in flight.'}</Empty>}
+          </Section>
+        </>
+      ) : (
+        <Section title={`${STATUS_CHIPS.find((c) => c.id === filter.status)!.label} — ${shown.length}`}>
+          {shown.length ? [...docked, ...away].map((s) => <ShipCard key={s.id} game={game} ship={s} />)
+            : <Empty>{filter.status === 'idle' ? 'No idle craft. Everything docked is already on a route.' : 'No craft match this filter.'}</Empty>}
+          {filtered && <button className="btn ghost wide" onClick={() => setFilter({ status: 'all', type: 'all' })}>Clear filters</button>}
+        </Section>
+      )}
+
+      {game.consignments.length > 0 && filter.status === 'all' && (
         <Section title="Awaiting a freighter">
           <ul className="plain">
             {game.consignments.map((c) => <li key={c.id}>{BLUEPRINT_BY_ID[c.blueprintId].name} → {game.installations[c.installationId]?.name}</li>)}

@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import {
   type ActionResult, type GameSettings, type GameState, type Message,
-  advanceDay, newGame, serialize, deserialize, markRead, BODY_BY_ID,
+  advanceDay, newGame, serialize, deserialize, markRead, BODY_BY_ID, type ShipType,
 } from '../engine';
 
 export type Tab = 'base' | 'map' | 'fleet' | 'research' | 'build' | 'log';
 export type Speed = 'paused' | 'run' | 'fast';
+export type FleetStatusFilter = 'all' | 'idle' | 'docked' | 'transit' | 'working';
+export interface FleetFilter { status: FleetStatusFilter; type: ShipType | 'all' }
 
 const AUTOSAVE = 'mill22-autosave';
 const SLOT = (n: number) => `mill22-slot-${n}`;
@@ -30,6 +32,7 @@ interface UIState {
   toast: { text: string; kind: 'error' | 'info' } | null;
   modal: Message | null;
   menuOpen: boolean;
+  fleetFilter: FleetFilter;
 
   start: (settings: Partial<GameSettings>, seed?: number) => void;
   load: (json: string) => boolean;
@@ -50,6 +53,7 @@ interface UIState {
   closeModal: () => void;
   setMenu: (open: boolean) => void;
   jumpTo: (ref?: string) => void;
+  setFleetFilter: (f: Partial<FleetFilter>) => void;
 }
 
 export const useGame = create<UIState>((set, get) => ({
@@ -62,16 +66,19 @@ export const useGame = create<UIState>((set, get) => ({
   toast: null,
   modal: null,
   menuOpen: false,
+  fleetFilter: { status: 'all', type: 'all' },
+
+  setFleetFilter: (f) => set({ fleetFilter: { ...get().fleetFilter, ...f } }),
 
   start: (settings, seed) => {
     const game = newGame(seed ?? Math.floor(Math.random() * 2147483646) + 1, settings);
-    set({ game, tab: 'base', speed: 'paused', installationId: 'moonbase', selectedBody: null, modal: game.messages[0], menuOpen: false });
+    set({ game, tab: 'base', speed: 'paused', installationId: 'moonbase', selectedBody: null, modal: game.messages[0], menuOpen: false, fleetFilter: { status: 'all', type: 'all' } });
     store(AUTOSAVE, serialize(game));
   },
   load: (json) => {
     try {
       const game = deserialize(json);
-      set({ game, tab: 'base', speed: 'paused', installationId: 'moonbase', selectedBody: null, modal: null, menuOpen: false });
+      set({ game, tab: 'base', speed: 'paused', installationId: 'moonbase', selectedBody: null, modal: null, menuOpen: false, fleetFilter: { status: 'all', type: 'all' } });
       return true;
     } catch (e) {
       get().showToast((e as Error).message);
