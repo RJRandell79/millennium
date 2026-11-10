@@ -151,7 +151,7 @@ export const FRAGMENTS: FragmentDef[] = [
     author: 'Off-World Authority, Contingency Office', dated: '11 December 2199',
     title: 'Svalbard vault: refit specification',
     body: 'Cold-climate habitat module, adapted from the Saturn survey designs, to be installed in the vault\'s service tunnel. Heat: geothermal loop with battery reserve. Occupancy: 9. Stores: 12 months at full ration. Projected surface winter: 30 to 40 months.\n\nCrew: Solheim I. (lead, vault keeper). Brierley N. (seed trials). Yusuf A. (crops). Ferrer L. (soils). Mehta A. (heat and power). Asante K. (medical). Kobayashi H. (communications). Eriksen T. (stores). Novák P. (records).\n\nAll volunteers. Each place signed for by the volunteer.',
-    reveals: 'Nine named volunteers took 14 months of supplies into a winter forecast at three years: they knew it was one-way.',
+    reveals: 'Nine named volunteers took 12 months of supplies into a winter forecast at three years: they knew it was one-way.',
   },
   {
     id: 'S4', mystery: 'severance', trigger: { kind: 'research', id: 'battlecruiser' },

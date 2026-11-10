@@ -111,17 +111,22 @@ export function score(s: GameState): number {
   return base + winBonus;
 }
 
-/** Archive engagement, for playtests: how much was recovered, opened, and how soon. */
+/**
+ * Archive engagement, for playtests: how much was recovered, opened, and how soon.
+ * Documents back-filled when an older save was upgraded are counted separately and left out of the rest.
+ */
 export function archiveStats(s: GameState) {
-  const found = s.archive.length;
-  const read = s.archive.filter((e) => e.firstReadDay !== undefined);
+  const inPlay = s.archive.filter((e) => !e.backfilled);
+  const found = inPlay.length;
+  const read = inPlay.filter((e) => e.firstReadDay !== undefined);
   const delays = read.map((e) => e.firstReadDay! - e.day).sort((a, b) => a - b);
   const median = delays.length ? delays[Math.floor((delays.length - 1) / 2)] : null;
   return {
     found,
+    backfilled: s.archive.length - found,
     read: read.length,
     unread: found - read.length,
-    reopened: s.archive.filter((e) => e.opens > 1).length,
+    reopened: inPlay.filter((e) => e.opens > 1).length,
     interruptedPlay: read.filter((e) => e.firstReadWhileRunning).length,
     medianDaysToOpen: median,
   };

@@ -149,10 +149,11 @@ function Menu() {
 function ArchiveStatsLine() {
   const game = useGame((s) => s.game)!;
   const a = archiveStats(game);
-  if (!a.found) return null;
+  if (!a.found && !a.backfilled) return null;
   return (
     <p className="muted small">
-      Archive: {a.found} recovered · {a.read} opened{a.medianDaysToOpen !== null ? ` · median ${a.medianDaysToOpen} days to open` : ''} · {a.interruptedPlay} opened mid-run · {a.reopened} reopened
+      Archive: {a.found} recovered in play · {a.read} opened{a.medianDaysToOpen !== null ? ` · median ${a.medianDaysToOpen} days to open` : ''} · {a.interruptedPlay} opened mid-run · {a.reopened} reopened
+      {a.backfilled ? ` · ${a.backfilled} filed from an older save (not counted)` : ''}
     </p>
   );
 }

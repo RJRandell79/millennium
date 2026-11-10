@@ -186,11 +186,11 @@ function runResearch(s: GameState, inst: Installation, eff: number): void {
 }
 
 /** File any archive documents released by this trigger. Quiet: no message, no pause; the Archive tab shows a badge. */
-export function recoverFragments(s: GameState, kind: 'research', id: string): void {
+export function recoverFragments(s: GameState, kind: 'research', id: string, backfilled = false): void {
   for (const f of FRAGMENTS) {
     if (f.trigger.kind !== kind || f.trigger.id !== id) continue;
     if (s.archive.some((e) => e.id === f.id)) continue;
-    s.archive.push({ id: f.id, day: s.day, opens: 0 });
+    s.archive.push(backfilled ? { id: f.id, day: s.day, opens: 0, backfilled: true } : { id: f.id, day: s.day, opens: 0 });
   }
 }
 
