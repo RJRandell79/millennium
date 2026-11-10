@@ -203,6 +203,8 @@ export interface ArchiveEntry {
   opens: number;
   /** true if the first opening interrupted a running clock */
   firstReadWhileRunning?: boolean;
+  /** filed when an older save was upgraded, not found in play: left out of the reading stats */
+  backfilled?: boolean;
 }
 
 export interface GameStats { raidsRepelled: number; shipsBuilt: number; kgMined: number; peakPopulation: number; named: Partial<Record<ShipType, number>> }

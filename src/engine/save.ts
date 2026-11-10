@@ -15,7 +15,8 @@ export function deserialize(json: string): GameState {
   if (s.version < 2) {
     s.installations.moonbase.commsWatch ??= true;
     s.archive ??= [];
-    for (const id of s.research.done) recoverFragments(s, 'research', id);
+    // Back-filled documents are tagged so they don't skew the playtest reading stats.
+    for (const id of s.research.done) recoverFragments(s, 'research', id, true);
     s.version = 2;
   }
   return s;
