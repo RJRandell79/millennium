@@ -221,6 +221,11 @@ describe('archive', () => {
     expect(up.version).toBe(2);
     expect(moonbase(up).commsWatch).toBe(true);
     expect(up.archive.map((e) => e.id)).toEqual(['W1']);
+    // Back-filled documents don't count towards the playtest reading stats.
+    expect(up.archive[0].backfilled).toBe(true);
+    expect(archiveStats(up)).toMatchObject({ found: 0, backfilled: 1, read: 0 });
+    const opened = okState(readFragment(up, 'W1'));
+    expect(archiveStats(opened)).toMatchObject({ found: 0, read: 0, medianDaysToOpen: null });
   });
 });
 
