@@ -1,5 +1,5 @@
 // Player commands. Each takes the current state and returns a new state, or an error string.
-import type { DeptId, GameState, Ship } from './types';
+import type { GrowthPolicy, DeptId, GameState, Ship } from './types';
 import { BLUEPRINT_BY_ID } from './data/blueprints';
 import { RESEARCH_BY_ID } from './data/research';
 import { pay, stockFrom } from './data/materials';
@@ -40,6 +40,15 @@ export function toggleCommsWatch(prev: GameState): ActionResult {
   }
   mb.commsWatch = false;
   msg(s, 'info', STORY.commsOff.title, STORY.commsOff.text);
+  return ok(s);
+}
+
+/** Set an installation's population policy. */
+export function setGrowthPolicy(prev: GameState, instId: string, policy: GrowthPolicy): ActionResult {
+  const s = clone(prev);
+  const inst = s.installations[instId];
+  if (!inst) return fail('No such installation');
+  inst.growth = policy;
   return ok(s);
 }
 

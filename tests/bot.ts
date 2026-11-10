@@ -1,7 +1,7 @@
 // A simple scripted player used to check that the game is winnable and the balance is sane.
 import {
   type GameState, advanceDay, setResearch, queueBuild, sendShip, setFreighterRoute, launchAssault,
-  researchList, missionsFor, moonbase, canAfford,
+  researchList, missionsFor, moonbase, canAfford, setGrowthPolicy, popCap, DEFAULT_GROWTH, type GrowthPolicy,
 } from '../src/engine';
 
 const RESEARCH_ORDER = [
@@ -20,7 +20,8 @@ function tryAct(s: GameState, r: { ok: boolean; state?: GameState }): GameState 
 }
 
 export type Opening = 'balanced' | 'defence' | 'asteroid' | 'research' | 'ceres';
-export interface BotOpts { conquest?: boolean; opening?: Opening }
+export type BotGrowth = GrowthPolicy | 'adaptive';
+export interface BotOpts { conquest?: boolean; opening?: Opening; growth?: BotGrowth }
 
 const OPENING_RESEARCH: Record<Opening, string[]> = {
   balanced: [],
@@ -39,6 +40,20 @@ export function botTurn(s: GameState, log: BotLog, opts: BotOpts = {}): GameStat
     const order = s.day < 200 ? [...OPENING_RESEARCH[opts.opening ?? 'balanced'], ...RESEARCH_ORDER] : RESEARCH_ORDER;
     const next = order.find((id) => avail.includes(id)) ?? avail[0];
     if (next) s = tryAct(s, setResearch(s, next));
+  }
+
+  // Population policy
+  if (opts.growth) {
+    for (const inst of Object.values(s.installations)) {
+      let want: GrowthPolicy = opts.growth === 'adaptive' ? 'steady' : opts.growth;
+      if (opts.growth === 'adaptive') {
+        const r = inst.report;
+        const raidSoon = s.threat.raids.some((x) => x.targetInstallationId === inst.id && x.arriveDay - s.day < 15);
+        const tight = !r.lifeSupportOk || r.daysOfSupplies < 90 || r.powerGen - r.powerDemand < 2;
+        want = tight || raidSoon ? 'hold' : inst.population < popCap(inst) - 5 ? 'grow' : 'steady';
+      }
+      if ((inst.growth ?? DEFAULT_GROWTH) !== want) s = tryAct(s, setGrowthPolicy(s, inst.id, want));
+    }
   }
 
   // Production planning

@@ -77,6 +77,8 @@ export interface Installation {
   shortageDays: number;
   /** Moonbase only: the 0.4 MW long-range listening watch, drawn under Life Support. */
   commsWatch?: boolean;
+  /** How this installation's population is managed. Absent means the default policy. */
+  growth?: GrowthPolicy;
 }
 
 export type ShipType =
@@ -187,6 +189,8 @@ export interface Modifier {
 export interface EarthState { engines: number; progress: number; probed: boolean }
 
 export interface GameSettings { varied: boolean; difficulty: 'relaxed' | 'standard' | 'hard' }
+
+export type GrowthPolicy = 'grow' | 'steady' | 'hold';
 
 /** A recovered document in the archive, with how the player has engaged with it (for playtests). */
 export interface ArchiveEntry {

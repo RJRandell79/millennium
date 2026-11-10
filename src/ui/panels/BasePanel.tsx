@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useGame } from '../../store/useGame';
 import {
-  type DeptId, type GameState, type Installation, MATERIALS, DEPT_NAMES, BODY_BY_ID, LS_PER_PERSON,
+  type DeptId, type GameState, type Installation, MATERIALS, DEPT_NAMES, BODY_BY_ID,
   fmtKg, popCap, toggleDept, researchRate, productionRate, BLUEPRINT_BY_ID, RESEARCH_BY_ID, solarPerArray,
   deptDemand, raidSize, formatDate, renameInstallation, toggleCommsWatch, COMMS_WATCH_MW,
+  GROWTH_POLICIES, growthPolicy, lsNeed, baseGrowthRate, setGrowthPolicy, type GrowthPolicy,
 } from '../../engine';
 import { Bar, Section, Toggle, pct } from '../components/common';
 import { BaseScene } from '../components/BaseScene';
@@ -48,7 +49,42 @@ function Overview({ game, inst }: { game: GameState; inst: Installation }) {
         <Stat label="Supplies" value={r.daysOfSupplies >= 999 ? 'Self-sufficient' : `${Math.floor(r.daysOfSupplies)} days`} warn={r.daysOfSupplies < 30} />
         {!inst.isMoonBase && <Stat label="Freighters" value={freighters.length ? freighters.map((f) => f.name).join(', ') : 'None assigned'} warn={!freighters.length} />}
       </div>
+      <GrowthControl inst={inst} />
     </section>
+  );
+}
+
+const POLICY_ORDER: GrowthPolicy[] = ['grow', 'steady', 'hold'];
+
+/** Population policy: the consequences are shown as numbers; which is wise is left to the player. */
+function GrowthControl({ inst }: { inst: Installation }) {
+  const act = useGame((s) => s.act);
+  const current = growthPolicy(inst);
+  const p = GROWTH_POLICIES[current];
+  const atCap = inst.population >= popCap(inst);
+  const perDay = atCap ? 0 : inst.population * baseGrowthRate(inst) * p.rate;
+  const ls = current === 'grow' && atCap ? 0 : Math.round((p.lsMult - 1) * 100);
+  const work = Math.round((p.work - 1) * 100);
+  const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+  return (
+    <div className="growth">
+      <span className="stat-label">Population policy</span>
+      <div className="segmented" role="radiogroup" aria-label="Population policy">
+        {POLICY_ORDER.map((g) => (
+          <button key={g} role="radio" aria-checked={g === current} className={g === current ? 'active' : ''}
+            onClick={() => act((s) => setGrowthPolicy(s, inst.id, g))}>
+            {GROWTH_POLICIES[g].name}
+          </button>
+        ))}
+      </div>
+      <p className="dept-detail">
+        {p.blurb}{' '}
+        <span className="muted">
+          Now: {atCap ? 'at capacity, no growth' : perDay > 0 ? `about ${perDay.toFixed(1)} more people a day` : 'no growth'}
+          {ls ? ` · life support ${sign(ls)}%` : ''}{work ? ` · work rate ${sign(work)}%` : ''}.
+        </span>
+      </p>
+    </div>
   );
 }
 
@@ -67,7 +103,8 @@ function deptDetail(game: GameState, inst: Installation, d: DeptId): string {
   switch (d) {
     case 'lifeSupport': {
       const p = Math.floor(inst.population);
-      return `${p} people use ${fmtKg(p * LS_PER_PERSON.oxygen)} O₂, ${fmtKg(p * LS_PER_PERSON.water)} water, ${fmtKg(p * LS_PER_PERSON.nitrogen)} N₂ a day.${inst.population < popCap(inst) ? ' Growing.' : ' At capacity.'}`;
+      const n = lsNeed(inst);
+      return `${p} people use ${fmtKg(n.oxygen)} O₂, ${fmtKg(n.water)} water, ${fmtKg(n.nitrogen)} N₂ a day.${inst.population >= popCap(inst) ? ' At capacity.' : growthPolicy(inst) === 'hold' ? ' Holding.' : ' Growing.'}`;
     }
     case 'energy': {
       const per = solarPerArray(game, inst);

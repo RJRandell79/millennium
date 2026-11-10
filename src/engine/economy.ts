@@ -1,4 +1,4 @@
-import type { Cost, DeptId, GameState, Installation, MaterialId } from './types';
+import type { Cost, DeptId, GameState, GrowthPolicy, Installation, MaterialId } from './types';
 import { LS_MATS, LS_PER_PERSON, canAfford, pay } from './data/materials';
 import { BLUEPRINT_BY_ID } from './data/blueprints';
 import { RESEARCH_BY_ID } from './data/research';
@@ -11,6 +11,23 @@ import { addShip } from './newGame';
 export const POWER_ORDER: DeptId[] = ['lifeSupport', 'defence', 'flightDeck', 'refinery', 'production', 'research'];
 
 export const MINE_BASE = 250; // kg/day per abundance point
+
+/**
+ * Population policy per installation. Each is a strategy with a cost now and a consequence later;
+ * none is the right answer. Rates are multiples of the base growth rate.
+ *  - grow:   full growth; dependants and new arrivals raise life-support use per head.
+ *  - steady: slow growth, no side effects.
+ *  - hold:   no growth; tighter rationing and a crew focused on the work in hand.
+ */
+export const GROWTH_POLICIES: Record<GrowthPolicy, { name: string; rate: number; lsMult: number; work: number; blurb: string }> = {
+  grow:   { name: 'Grow',   rate: 1,   lsMult: 1.1, work: 1,    blurb: 'Full growth. While numbers are rising, newcomers and dependants raise life-support use by 10% a head.' },
+  steady: { name: 'Steady', rate: 0.4, lsMult: 1,   work: 1.04, blurb: 'Slow growth while the economy catches up. The crew works 4% faster.' },
+  hold:   { name: 'Hold',   rate: 0,   lsMult: 0.9, work: 1.1,  blurb: 'No growth. Tighter rationing cuts life-support use by 10%, and the crew works 10% faster.' },
+};
+export const DEFAULT_GROWTH: GrowthPolicy = 'grow';
+export const growthPolicy = (inst: Installation): GrowthPolicy => inst.growth ?? DEFAULT_GROWTH;
+/** Base daily growth rate before policy. */
+export const baseGrowthRate = (inst: Installation): number => (inst.isMoonBase ? 0.004 : 0.0025);
 
 /** Moonbase's long-range listening watch, powered as part of Life Support. */
 export const COMMS_WATCH_MW = 0.4;
@@ -53,11 +70,15 @@ export function deptDemand(inst: Installation, d: DeptId): number {
 }
 
 export function workforce(inst: Installation): number {
-  return inst.isMoonBase ? 0.6 + 0.4 * (inst.population / 100) : 0.3 + 1.2 * (inst.population / 100);
+  const base = inst.isMoonBase ? 0.6 + 0.4 * (inst.population / 100) : 0.3 + 1.2 * (inst.population / 100);
+  return base * GROWTH_POLICIES[growthPolicy(inst)].work;
 }
 
 export function lsNeed(inst: Installation): Record<'oxygen' | 'water' | 'nitrogen', number> {
-  const p = inst.population;
+  const pol = growthPolicy(inst);
+  // Grow only costs extra while numbers are actually rising.
+  const mult = pol === 'grow' && inst.population >= popCap(inst) ? 1 : GROWTH_POLICIES[pol].lsMult;
+  const p = inst.population * mult;
   return { oxygen: p * LS_PER_PERSON.oxygen, water: p * LS_PER_PERSON.water, nitrogen: p * LS_PER_PERSON.nitrogen };
 }
 
@@ -135,8 +156,8 @@ export function runInstallation(s: GameState, inst: Installation): void {
     if (inst.shortageDays > 0) msg(s, 'good', `${inst.name}: life support restored`, 'Supplies and power are back to normal.', inst.id);
     inst.shortageDays = 0;
     const cap = popCap(inst);
-    if (lsEff >= 0.95 && inst.population < cap) {
-      const rate = inst.isMoonBase ? 0.004 : 0.0025;
+    const rate = baseGrowthRate(inst) * GROWTH_POLICIES[growthPolicy(inst)].rate;
+    if (lsEff >= 0.95 && inst.population < cap && rate > 0) {
       inst.population = Math.min(cap, inst.population + Math.max(0.05, inst.population * rate));
     }
   }

@@ -294,3 +294,7 @@ select, input[type='text'], input:not([type]), input[inputmode] { background: #0
 .doc-meta { grid-column: 2; }
 .doc-body { padding: 0 12px 10px 26px; font-size: 14px; line-height: 1.5; max-width: 62ch; }
 .doc-body p { margin: 0 0 9px; }
+
+/* Population policy */
+.growth { padding: 8px 12px 4px; border-top: 1px solid var(--hi); }
+.growth .segmented { padding: 6px 0; }

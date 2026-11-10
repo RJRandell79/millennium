@@ -3,6 +3,7 @@ import {
   newGame, advanceDay, advanceUntilEvent, serialize, deserialize, sendShip, queueBuild, setResearch,
   travelDays, position, moonbase, toggleDept, raidSize, toggleCommsWatch, readFragment, deptDemand,
   archiveStats, FRAGMENTS, RESEARCH_BY_ID, COMMS_WATCH_MW, type GameState,
+  setGrowthPolicy, lsNeed, workforce, popCap,
 } from '../src/engine';
 import { playBot } from './bot';
 
@@ -115,6 +116,37 @@ describe('comms watch', () => {
       for (let i = 0; i < 499; i++) s = advanceDay(s).state;
       expect(s.flags.some((f) => f.startsWith('survivors'))).toBe(false);
     }
+  });
+});
+
+describe('population policy', () => {
+  it('defaults to Grow, and each policy has visible costs and effects', () => {
+    let s = newGame(3);
+    const mb = () => moonbase(s);
+    mb().equipment.habitat = 2; // room to grow
+    expect(mb().growth).toBeUndefined();
+    const base = lsNeed({ ...mb(), growth: 'steady' }).oxygen;
+    expect(lsNeed(mb()).oxygen).toBeCloseTo(base * 1.1, 6);
+    // Grow costs nothing extra once at capacity.
+    expect(lsNeed({ ...mb(), population: popCap(mb()) }).oxygen).toBeCloseTo(lsNeed({ ...mb(), population: popCap(mb()), growth: 'steady' }).oxygen, 6);
+    s = okState(setGrowthPolicy(s, 'moonbase', 'hold'));
+    expect(lsNeed(mb()).oxygen).toBeCloseTo(base * 0.9, 6);
+    expect(workforce(mb())).toBeCloseTo(workforce({ ...mb(), growth: 'grow' }) * 1.1, 6);
+    const p0 = mb().population;
+    for (let i = 0; i < 30; i++) s = advanceDay(s).state;
+    expect(mb().population).toBeLessThanOrEqual(p0);
+  });
+
+  it('grows fastest on Grow, slower on Steady', () => {
+    const grown = (g: 'grow' | 'steady') => {
+      const s0 = newGame(3);
+      moonbase(s0).equipment.habitat = 2;
+      let s = okState(setGrowthPolicy(s0, 'moonbase', g));
+      for (let i = 0; i < 60; i++) s = advanceDay(s).state;
+      return moonbase(s).population;
+    };
+    expect(grown('grow')).toBeGreaterThan(grown('steady'));
+    expect(grown('steady')).toBeGreaterThan(100);
   });
 });
 
