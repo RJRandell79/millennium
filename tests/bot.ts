@@ -1,7 +1,7 @@
 // A simple scripted player used to check that the game is winnable and the balance is sane.
 import {
   type GameState, advanceDay, setResearch, queueBuild, sendShip, setFreighterRoute, launchAssault,
-  researchList, missionsFor, moonbase, canAfford, setGrowthPolicy, popCap, DEFAULT_GROWTH, type GrowthPolicy,
+  researchList, missionsFor, moonbase, canAfford, setGrowthPolicy, popCap, growthLimit, DEFAULT_GROWTH, type GrowthPolicy,
 } from '../src/engine';
 
 const RESEARCH_ORDER = [
@@ -20,7 +20,7 @@ function tryAct(s: GameState, r: { ok: boolean; state?: GameState }): GameState 
 }
 
 export type Opening = 'balanced' | 'defence' | 'asteroid' | 'research' | 'ceres';
-export type BotGrowth = GrowthPolicy | 'adaptive';
+export type BotGrowth = GrowthPolicy | 'adaptive' | 'holdWhenFull' | 'reserveThenHold';
 export interface BotOpts { conquest?: boolean; opening?: Opening; growth?: BotGrowth }
 
 const OPENING_RESEARCH: Record<Opening, string[]> = {
@@ -45,8 +45,16 @@ export function botTurn(s: GameState, log: BotLog, opts: BotOpts = {}): GameStat
   // Population policy
   if (opts.growth) {
     for (const inst of Object.values(s.installations)) {
-      let want: GrowthPolicy = opts.growth === 'adaptive' ? 'steady' : opts.growth;
+      const fixed = opts.growth === 'grow' || opts.growth === 'steady' || opts.growth === 'hold';
+      let want: GrowthPolicy = fixed ? (opts.growth as GrowthPolicy) : 'grow';
+      if (opts.growth === 'holdWhenFull') want = inst.population >= popCap(inst) ? 'hold' : 'grow';
+      // Fill the Moonbase reserve on Grow, then put it on duty with Hold until losses take it back below capacity.
+      if (opts.growth === 'reserveThenHold') {
+        const cur = inst.growth ?? DEFAULT_GROWTH;
+        want = inst.population >= growthLimit(inst) - 0.5 ? 'hold' : cur === 'hold' && inst.population >= popCap(inst) ? 'hold' : 'grow';
+      }
       if (opts.growth === 'adaptive') {
+        want = 'steady';
         const r = inst.report;
         const raidSoon = s.threat.raids.some((x) => x.targetInstallationId === inst.id && x.arriveDay - s.day < 15);
         const tight = !r.lifeSupportOk || r.daysOfSupplies < 90 || r.powerGen - r.powerDemand < 2;
