@@ -202,8 +202,43 @@ export function runInstallation(s: GameState, inst: Installation): void {
   }
 }
 
+/**
+ * Research pacing. Kept in one place so balance experiments can model alternatives
+ * (tests/research.experiment.test.ts). Defaults reproduce the original rule:
+ * rate = (1 + labs) × power × crew, cost = project points.
+ */
+export const RESEARCH_TUNING = {
+  /** extra rate per lab beyond the base department */
+  perLab: 1,
+  /** exponent on the crew factor: 1 = linear in crew, 0.5 = diminishing returns */
+  crewExponent: 1,
+  /** multiplier on every project's points */
+  costMult: 1,
+  /** extra cost per step of prerequisite depth beyond depthFrom: points × (1 + depthScale × max(0, depth − depthFrom)) */
+  depthScale: 0,
+  depthFrom: 0,
+};
+
+const depthCache = new Map<string, number>();
+/** Longest prerequisite chain below a project (0 for a project with no prerequisites). */
+export function researchDepth(id: string): number {
+  const cached = depthCache.get(id);
+  if (cached !== undefined) return cached;
+  const def = RESEARCH_BY_ID[id];
+  const d = def && def.requires.length ? 1 + Math.max(...def.requires.map(researchDepth)) : 0;
+  depthCache.set(id, d);
+  return d;
+}
+
+export function researchCost(def: { id?: string; days: number }): number {
+  const depth = def.id ? researchDepth(def.id) : 0;
+  const t = RESEARCH_TUNING;
+  return def.days * t.costMult * (1 + t.depthScale * Math.max(0, depth - t.depthFrom));
+}
+
 export function researchRate(inst: Installation, eff: number): number {
-  return (1 + inst.equipment.labs) * eff * workforce(inst);
+  const t = RESEARCH_TUNING;
+  return (1 + t.perLab * inst.equipment.labs) * eff * Math.pow(workforce(inst), t.crewExponent);
 }
 
 function runResearch(s: GameState, inst: Installation, eff: number): void {
@@ -211,7 +246,7 @@ function runResearch(s: GameState, inst: Installation, eff: number): void {
   if (!r.current) return;
   const def = RESEARCH_BY_ID[r.current];
   r.progress += researchRate(inst, eff);
-  if (r.progress >= def.days) {
+  if (r.progress >= researchCost(def)) {
     r.done.push(def.id);
     r.current = undefined;
     r.progress = 0;

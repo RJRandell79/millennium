@@ -1,5 +1,5 @@
 import { useGame } from '../../store/useGame';
-import { type ResearchDef, RESEARCH_BY_ID, researchList, setResearch, researchRate, formatDate } from '../../engine';
+import { type ResearchDef, RESEARCH_BY_ID, researchList, setResearch, researchRate, researchCost, formatDate } from '../../engine';
 import { Bar, Section } from '../components/common';
 
 const BRANCHES: ResearchDef['branch'][] = ['Space', 'Colonies', 'Industry', 'Defence', 'Endgame'];
@@ -11,7 +11,7 @@ export function ResearchPanel() {
   const list = researchList(game);
   const cur = game.research.current ? RESEARCH_BY_ID[game.research.current] : null;
   const rate = researchRate(mb, mb.report.deptEff.research ?? 0);
-  const eta = cur && rate > 0 ? Math.ceil((cur.days - game.research.progress) / rate) : null;
+  const eta = cur && rate > 0 ? Math.ceil((researchCost(cur) - game.research.progress) / rate) : null;
 
   return (
     <div className="stack">
@@ -19,7 +19,7 @@ export function ResearchPanel() {
         {cur ? (
           <>
             <h3 className="proj-name">{cur.name}</h3>
-            <Bar value={game.research.progress} max={cur.days} tone="cyan" label={`${Math.floor((game.research.progress / cur.days) * 100)}%`} />
+            <Bar value={game.research.progress} max={researchCost(cur)} tone="cyan" label={`${Math.floor((game.research.progress / researchCost(cur)) * 100)}%`} />
             <p className="muted small">{rate > 0 ? `${rate.toFixed(2)} pts/day · completes ~${formatDate(game.day + (eta ?? 0))}` : 'Research department has no power!'}</p>
             <p className="small">Unlocks: {cur.unlocks}</p>
           </>
@@ -37,7 +37,7 @@ export function ResearchPanel() {
                   <button disabled={status === 'done' || status === 'locked'} onClick={() => act((s) => setResearch(s, def.id), `Researching ${def.name}`)}>
                     <span className="rs-top">
                       <strong>{def.name}</strong>
-                      <span className="muted small">{status === 'done' ? '✓ done' : status === 'current' ? '◉ active' : `${def.days} pts`}</span>
+                      <span className="muted small">{status === 'done' ? '✓ done' : status === 'current' ? '◉ active' : `${Math.round(researchCost(def))} pts`}</span>
                     </span>
                     <span className="small">{def.desc}</span>
                     <span className="small rs-unlock">→ {def.unlocks}</span>

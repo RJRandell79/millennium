@@ -21,7 +21,7 @@ function tryAct(s: GameState, r: { ok: boolean; state?: GameState }): GameState 
 
 export type Opening = 'balanced' | 'defence' | 'asteroid' | 'research' | 'ceres';
 export type BotGrowth = GrowthPolicy | 'adaptive' | 'holdWhenFull' | 'reserveThenHold';
-export interface BotOpts { conquest?: boolean; opening?: Opening; growth?: BotGrowth }
+export interface BotOpts { conquest?: boolean; opening?: Opening; growth?: BotGrowth; /** research labs to build (default 2; max 4) */ labs?: number }
 
 const OPENING_RESEARCH: Record<Opening, string[]> = {
   balanced: [],
@@ -94,7 +94,7 @@ export function botTurn(s: GameState, log: BotLog, opts: BotOpts = {}): GameStat
   if (done('orbitalLaser') && e.lasers < Math.min(10, 2 + s.threat.wave)) want('laser', 1);
   if (done('improvedRefining') && e.refinery < 3) want('refinery', 1);
   if (mb.population > 100 * e.habitat - 15 && e.habitat < 6) want('habitat', 1);
-  if (done('labExpansion') && e.labs < 2) want('lab', 1);
+  if (done('labExpansion') && e.labs < (opts.labs ?? 2)) want('lab', 1);
   if (done('factoryAutomation') && e.factories < 2) want('factory', 1);
   if (done('shields') && e.shields < 2) want('shield', 1);
   if (done('surveyor') && count('surveyor') < 1) want('surveyor', 1);
