@@ -10,6 +10,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "experiment": "EXPERIMENT=1 vitest run tests/openings.experiment.test.ts",
+    "experiment:score": "EXPERIMENT=1 vitest run tests/score.experiment.test.ts",
     "experiment:growth": "EXPERIMENT=1 vitest run tests/growth.experiment.test.ts"
   },
   "dependencies": {

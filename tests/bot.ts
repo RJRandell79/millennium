@@ -21,7 +21,7 @@ function tryAct(s: GameState, r: { ok: boolean; state?: GameState }): GameState 
 
 export type Opening = 'balanced' | 'defence' | 'asteroid' | 'research' | 'ceres' | 'drives';
 export type BotGrowth = GrowthPolicy | 'adaptive' | 'holdWhenFull' | 'reserveThenHold';
-export interface BotOpts { conquest?: boolean; opening?: Opening; growth?: BotGrowth; /** research labs to build (default 2; max 4) */ labs?: number }
+export interface BotOpts { conquest?: boolean; opening?: Opening; growth?: BotGrowth; /** research labs to build (default 2; max 4) */ labs?: number; /** terraforming engines to build (default 4) */ engines?: number }
 
 const OPENING_RESEARCH: Record<Opening, string[]> = {
   balanced: [],
@@ -108,7 +108,7 @@ export function botTurn(s: GameState, log: BotLog, opts: BotOpts = {}): GameStat
   if (done('fission') && e.reactor < 2 && mb.stock.uranium > 1500) want('reactor', 1);
   if (done('battlecruiser') && count('battlecruiser') + queued('battlecruiser') < 6 && s.threat.status === 'hostile') want('battlecruiser', 1);
   if (done('planetaryAssault') && count('troopship') + queued('troopship') < 1 && s.threat.status === 'hostile') want('troopship', 1);
-  if (done('terraforming') && s.earth.engines + queued('terraformer') < 4) want('terraformer', 1);
+  if (done('terraforming') && s.earth.engines + queued('terraformer') < (opts.engines ?? 4)) want('terraformer', 1);
   for (const c of colonies) {
     const r = c.report;
     if (r.powerGen < r.powerDemand && c.equipment.solar + queued('solar') < 20) {
