@@ -19,7 +19,7 @@ function tryAct(s: GameState, r: { ok: boolean; state?: GameState }): GameState 
   return r.ok ? (r as { state: GameState }).state : s;
 }
 
-export type Opening = 'balanced' | 'defence' | 'asteroid' | 'research' | 'ceres';
+export type Opening = 'balanced' | 'defence' | 'asteroid' | 'research' | 'ceres' | 'drives';
 export type BotGrowth = GrowthPolicy | 'adaptive' | 'holdWhenFull' | 'reserveThenHold';
 export interface BotOpts { conquest?: boolean; opening?: Opening; growth?: BotGrowth; /** research labs to build (default 2; max 4) */ labs?: number }
 
@@ -29,6 +29,7 @@ const OPENING_RESEARCH: Record<Opening, string[]> = {
   asteroid: ['improvedRefining', 'factoryAutomation'],
   research: ['labExpansion', 'surveyor', 'ionDrive'],
   ceres: ['surveyor', 'colonyPods'],
+  drives: ['surveyor', 'colonyPods', 'ionDrive', 'fission', 'fusionDrive'],
 };
 
 export function botTurn(s: GameState, log: BotLog, opts: BotOpts = {}): GameState {
