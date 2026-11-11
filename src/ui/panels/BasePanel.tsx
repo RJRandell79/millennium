@@ -5,6 +5,7 @@ import {
   fmtKg, popCap, toggleDept, researchRate, productionRate, BLUEPRINT_BY_ID, RESEARCH_BY_ID, solarPerArray,
   deptDemand, raidSize, formatDate, renameInstallation, toggleCommsWatch, COMMS_WATCH_MW,
   GROWTH_POLICIES, growthPolicy, lsNeed, baseGrowthRate, setGrowthPolicy, growthLimit, reserveOf, type GrowthPolicy,
+  terraformForecast,
 } from '../../engine';
 import { Bar, Section, Toggle, pct } from '../components/common';
 import { BaseScene } from '../components/BaseScene';
@@ -290,12 +291,29 @@ function Objectives({ game }: { game: GameState }) {
         <span>Objectives</span>
         <span className="muted small">{done}/{items.length} {open ? '▴' : '▾'}</span>
       </button>
-      {game.earth.engines > 0 && <Bar value={game.earth.progress} max={100} tone="green" label={`Earth restoration ${game.earth.progress.toFixed(1)}%`} />}
+      {game.earth.engines > 0 && <RestorationBar game={game} />}
       {open && (
         <ol className="obj-list">
           {items.map(([t, ok]) => <li key={t} className={ok ? 'done' : ''}>{ok ? '✓' : '○'} {t}</li>)}
         </ol>
       )}
     </section>
+  );
+}
+
+function RestorationBar({ game }: { game: GameState }) {
+  const f = terraformForecast(game);
+  const done = game.earth.progress >= 100;
+  const eta = done ? '' : f.fed < 1 ? ' · short of feed' : ` · ~${f.daysLeft} days left`;
+  return (
+    <>
+      <Bar value={game.earth.progress} max={100} tone="green" label={`Earth restoration ${game.earth.progress.toFixed(1)}%${eta}`} />
+      {!done && (
+        <p className="muted small">
+          {f.engines} engine{f.engines > 1 ? 's' : ''} · {f.ratePerDay.toFixed(1)}% a day. Each extra engine adds {f.perEngine}% a day
+          {f.anotherAffordable && !f.queued ? '; Moonbase has the materials for another.' : '.'}
+        </p>
+      )}
+    </>
   );
 }

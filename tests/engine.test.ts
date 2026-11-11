@@ -3,7 +3,7 @@ import {
   newGame, advanceDay, advanceUntilEvent, serialize, deserialize, sendShip, queueBuild, setResearch,
   travelDays, position, moonbase, toggleDept, raidSize, toggleCommsWatch, readFragment, deptDemand,
   archiveStats, FRAGMENTS, RESEARCH_BY_ID, COMMS_WATCH_MW, type GameState,
-  setGrowthPolicy, lsNeed, workforce, popCap, growthLimit, reserveOf,
+  setGrowthPolicy, lsNeed, workforce, popCap, growthLimit, reserveOf, terraformForecast, BLUEPRINT_BY_ID,
 } from '../src/engine';
 import { playBot } from './bot';
 
@@ -226,6 +226,61 @@ describe('archive', () => {
     expect(archiveStats(up)).toMatchObject({ found: 0, backfilled: 1, read: 0 });
     const opened = okState(readFragment(up, 'W1'));
     expect(archiveStats(opened)).toMatchObject({ found: 0, read: 0, medianDaysToOpen: null });
+  });
+});
+
+describe('terraforming readability', () => {
+  function earthGame(engines: number, progress: number, rich: boolean): GameState {
+    const s = newGame(1);
+    s.research.done.push('terraforming');
+    s.earth = { engines, progress, probed: true };
+    const mb = moonbase(s);
+    mb.stock.nitrogen = 1e6; mb.stock.water = 1e6; mb.stock.oxygen = 1e6;
+    if (rich) for (const [k, v] of Object.entries(BLUEPRINT_BY_ID.terraformer.cost)) mb.stock[k as 'iron'] = Math.max(mb.stock[k as 'iron'], v * 2);
+    else for (const k of Object.keys(BLUEPRINT_BY_ID.terraformer.cost)) if (k !== 'nitrogen') mb.stock[k as 'iron'] = 0;
+    return s;
+  }
+
+  it('forecasts the rate and finish, and engines add together', () => {
+    const one = terraformForecast(earthGame(1, 16, false));
+    expect(one.ratePerDay).toBeCloseTo(0.2);
+    expect(one.daysLeft).toBe(420);
+    expect(one.anotherAffordable).toBe(false);
+    const four = terraformForecast(earthGame(4, 16, false));
+    expect(four.ratePerDay).toBeCloseTo(0.8);
+    expect(four.daysLeft).toBe(105);
+  });
+
+  it('reports a feed shortfall', () => {
+    const s = earthGame(2, 50, false);
+    moonbase(s).stock.water = 800; // half a day for two engines
+    const f = terraformForecast(s);
+    expect(f.fed).toBeCloseTo(0.5);
+    expect(f.ratePerDay).toBeCloseTo(0.2);
+    expect(f.feedDays).toBe(0);
+  });
+
+  it('says once per engine count when Moonbase can afford another engine', () => {
+    let s = earthGame(1, 10, true);
+    s = advanceDay(s).state;
+    const prompts = (g: GameState) => g.messages.filter((m) => m.title === 'Materials for another Terraforming Engine').length;
+    expect(prompts(s)).toBe(1);
+    expect(terraformForecast(s).anotherAffordable).toBe(true);
+    s = advanceDay(s).state;
+    expect(prompts(s)).toBe(1);
+    s.earth.engines = 2;
+    s = advanceDay(s).state;
+    expect(prompts(s)).toBe(2);
+  });
+
+  it('stays quiet when an engine is already queued', () => {
+    let s = earthGame(1, 10, true);
+    const r = queueBuild(s, 'terraformer', 'earth');
+    expect(r.ok).toBe(true);
+    if (r.ok) s = r.state;
+    s.queue.forEach((q) => { q.started = true; }); // paid, so stock stays affordable for the check
+    s = advanceDay(s).state;
+    expect(s.messages.some((m) => m.title === 'Materials for another Terraforming Engine')).toBe(false);
   });
 });
 
