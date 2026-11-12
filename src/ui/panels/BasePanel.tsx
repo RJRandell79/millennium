@@ -5,7 +5,7 @@ import {
   fmtKg, popCap, toggleDept, researchRate, productionRate, BLUEPRINT_BY_ID, RESEARCH_BY_ID, solarPerArray,
   deptDemand, raidSize, formatDate, renameInstallation, toggleCommsWatch, COMMS_WATCH_MW,
   GROWTH_POLICIES, growthPolicy, lsNeed, baseGrowthRate, setGrowthPolicy, growthLimit, reserveOf, type GrowthPolicy,
-  terraformForecast,
+  terraformForecast, fmtRate,
 } from '../../engine';
 import { Bar, Section, Toggle, pct } from '../components/common';
 import { BaseScene } from '../components/BaseScene';
@@ -304,13 +304,16 @@ function Objectives({ game }: { game: GameState }) {
 function RestorationBar({ game }: { game: GameState }) {
   const f = terraformForecast(game);
   const done = game.earth.progress >= 100;
-  const eta = done ? '' : f.fed < 1 ? ' · short of feed' : ` · ~${f.daysLeft} days left`;
+  const short = f.fed < 1;
+  const eta = done ? '' : f.finishDay === null ? ' · stalled' : ` · ~${f.daysLeft} days${short ? ' at this rate' : ' left'}`;
   return (
     <>
       <Bar value={game.earth.progress} max={100} tone="green" label={`Earth restoration ${game.earth.progress.toFixed(1)}%${eta}`} />
       {!done && (
-        <p className="muted small">
-          {f.engines} engine{f.engines > 1 ? 's' : ''} · {f.ratePerDay.toFixed(1)}% a day. Each extra engine adds {f.perEngine}% a day
+        <p className={short ? 'warn-text small' : 'muted small'}>
+          {f.engines} engine{f.engines > 1 ? 's' : ''} · {fmtRate(f.ratePerDay)} a day
+          {short ? `, short of ${f.short.join(' and ')} (${fmtRate(f.fullRate)} when fully fed).` : '.'}
+          {' '}Each extra engine adds {f.perEngine}% a day if it can be fed
           {f.anotherAffordable && !f.queued ? '; Moonbase has the materials for another.' : '.'}
         </p>
       )}

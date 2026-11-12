@@ -3,7 +3,7 @@ import {
   newGame, advanceDay, advanceUntilEvent, serialize, deserialize, sendShip, queueBuild, setResearch,
   travelDays, position, moonbase, toggleDept, raidSize, toggleCommsWatch, readFragment, deptDemand,
   archiveStats, FRAGMENTS, RESEARCH_BY_ID, COMMS_WATCH_MW, type GameState,
-  setGrowthPolicy, lsNeed, workforce, popCap, growthLimit, reserveOf, terraformForecast, BLUEPRINT_BY_ID,
+  setGrowthPolicy, lsNeed, workforce, popCap, growthLimit, reserveOf, terraformForecast, fmtRate, BLUEPRINT_BY_ID,
 } from '../src/engine';
 import { playBot } from './bot';
 
@@ -251,13 +251,28 @@ describe('terraforming readability', () => {
     expect(four.daysLeft).toBe(105);
   });
 
-  it('reports a feed shortfall', () => {
-    const s = earthGame(2, 50, false);
-    moonbase(s).stock.water = 800; // half a day for two engines
-    const f = terraformForecast(s);
-    expect(f.fed).toBeCloseTo(0.5);
-    expect(f.ratePerDay).toBeCloseTo(0.2);
-    expect(f.feedDays).toBe(0);
+  it('reports the rate the engines actually got, including a shortfall', () => {
+    for (const water of [1e6, 1200]) { // plenty; then less than a day's feed for two engines
+      const s = earthGame(2, 50, false);
+      moonbase(s).stock.water = water;
+      const next = advanceDay(s).state;
+      const f = terraformForecast(next);
+      expect(f.ratePerDay).toBeCloseTo(next.earth.progress - 50, 6);
+      if (water < 1600) {
+        expect(f.fed).toBeLessThan(1);
+        expect(f.short).toContain('water');
+        expect(f.fullRate).toBeCloseTo(0.4);
+      } else {
+        expect(f.fed).toBe(1);
+        expect(f.short).toEqual([]);
+      }
+    }
+  });
+
+  it('never shows a slow rate as 0.0%', () => {
+    expect(fmtRate(0.04)).toBe('0.04%');
+    expect(fmtRate(0.8)).toBe('0.8%');
+    expect(fmtRate(0)).toBe('0%');
   });
 
   it('says once per engine count when Moonbase can afford another engine', () => {

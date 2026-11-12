@@ -61,6 +61,9 @@ function runEarth(s: GameState): void {
   let frac = 1;
   for (const [k, v] of Object.entries(TERRAFORM_FEED)) frac = Math.min(frac, mb.stock[k as 'water'] / (v * e.engines));
   frac = Math.max(0, Math.min(1, frac));
+  e.fed = frac;
+  e.short = (Object.entries(TERRAFORM_FEED) as ['nitrogen' | 'water' | 'oxygen', number][])
+    .filter(([k, v]) => mb.stock[k] < v * e.engines - 1e-6).map(([k]) => k);
   for (const [k, v] of Object.entries(TERRAFORM_FEED)) mb.stock[k as 'water'] -= v * e.engines * frac;
   if (frac < 1 && setFlag(s, `tf-starved-${Math.floor(s.day / 30)}`)) {
     msg(s, 'warn', 'Terraforming starved', 'The engines on Earth are short of nitrogen, water or oxygen. Bring more in from Titan, Triton, Ceres or Venus.', 'earth');
@@ -88,14 +91,18 @@ export interface TerraformForecast {
   queued: number;
   /** % a day per engine when fed */
   perEngine: number;
-  /** % a day at today's feed level */
+  /** % a day on the last day's actual feed */
   ratePerDay: number;
-  /** 0–1: how much of the engines' daily feed Moonbase can supply from stock */
+  /** % a day with every engine fully fed */
+  fullRate: number;
+  /** 0–1: share of the engines' feed supplied on the last day */
   fed: number;
-  /** days to 100% if fully fed; null with no engines */
+  /** feed materials that ran short on the last day */
+  short: ('nitrogen' | 'water' | 'oxygen')[];
+  /** days to 100%: at the full rate when fed, at today's rate when short (Infinity if nothing gets through); null with no engines */
   daysLeft: number | null;
   finishDay: number | null;
-  /** days of feed in Moonbase stock at the current engine count, ignoring deliveries */
+  /** days of feed in Moonbase stock at the current engine count, before production and deliveries */
   feedDays: number;
   anotherAffordable: boolean;
 }
@@ -104,29 +111,39 @@ export function terraformForecast(s: GameState): TerraformForecast {
   const e = s.earth;
   const mb = moonbase(s);
   const queued = s.queue.filter((q) => q.blueprintId === 'terraformer').length;
-  let fed = 1;
+  // Days of feed already in stock. Daily production and deliveries come on top, so this is a floor.
   let feedDays = Infinity;
   if (e.engines > 0) {
-    for (const [k, v] of Object.entries(TERRAFORM_FEED)) {
-      const days = mb.stock[k as 'water'] / (v * e.engines);
-      fed = Math.min(fed, days);
-      feedDays = Math.min(feedDays, days);
-    }
+    for (const [k, v] of Object.entries(TERRAFORM_FEED)) feedDays = Math.min(feedDays, mb.stock[k as 'water'] / (v * e.engines));
   }
-  fed = Math.max(0, Math.min(1, fed));
+  // The rate is what the engines actually received on the last day. End-of-day stock is the wrong measure:
+  // income arrives the next day before the engines draw, so a base living hand to mouth can look unfed when it isn't.
+  const fed = e.engines > 0 ? Math.max(0, Math.min(1, e.fed ?? 1)) : 1;
   const left = Math.max(0, 100 - e.progress);
-  const daysLeft = e.engines > 0 ? Math.ceil(left / (TERRAFORM_RATE * e.engines)) : null;
+  const fullRate = TERRAFORM_RATE * e.engines;
+  const ratePerDay = e.engines > 0 && left > 0 ? fullRate * fed : 0;
+  // Estimate at today's rate when short, so the date doesn't promise more than the feed allows.
+  const rate = fed < 1 ? ratePerDay : fullRate;
+  const daysLeft = e.engines > 0 ? (rate > 0 ? Math.ceil(left / rate) : Infinity) : null;
   return {
     engines: e.engines,
     queued,
     perEngine: TERRAFORM_RATE,
-    ratePerDay: e.engines > 0 && left > 0 ? TERRAFORM_RATE * e.engines * fed : 0,
+    ratePerDay,
+    fullRate,
     fed,
+    short: e.short ?? [],
     daysLeft,
-    finishDay: daysLeft === null ? null : s.day + daysLeft,
-    feedDays: Math.floor(feedDays),
+    finishDay: daysLeft === null || !Number.isFinite(daysLeft) ? null : s.day + daysLeft,
+    feedDays: Number.isFinite(feedDays) ? Math.floor(feedDays) : Infinity,
     anotherAffordable: s.research.done.includes('terraforming') && canAfford(mb.stock, BLUEPRINT_BY_ID.terraformer.cost),
   };
+}
+
+/** A rate for display: one decimal place, or two below 0.1, so a slow rate never reads as 0.0%. */
+export function fmtRate(pct: number): string {
+  if (pct <= 0) return '0%';
+  return pct < 0.1 ? `${pct.toFixed(2)}%` : `${pct.toFixed(1)}%`;
 }
 
 function runEvents(s: GameState): void {
