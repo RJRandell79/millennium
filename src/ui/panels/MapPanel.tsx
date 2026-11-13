@@ -2,7 +2,7 @@ import { useGame } from '../../store/useGame';
 import {
   type GameState, type MaterialId, type Ship, type ShipType, BODY_BY_ID, MOONS_OF, MATERIAL_BY_ID, SHIP_SPECS,
   abundanceLabel, colonyRequirementMet, distanceAU, sunDistance, driveName, driveSpeed, travelDays, missionsFor,
-  sendShip, launchAssault, fuelFor, BATTLECRUISER_POWER, TERRAFORM_FEED, fmtKg,
+  sendShip, launchAssault, fuelFor, BATTLECRUISER_POWER, TERRAFORM_FEED, TERRAFORM_RATE, fmtKg, formatDate, terraformForecast, fmtRate,
 } from '../../engine';
 import { SolarCanvas } from './SolarCanvas';
 import { Bar, Globe, Section } from '../components/common';
@@ -165,16 +165,55 @@ function Launchers({ game, bodyId }: { game: GameState; bodyId: string }) {
   );
 }
 
+const FEED_NAMES = { nitrogen: 'nitrogen', water: 'water', oxygen: 'oxygen' } as const;
+const listOf = (xs: string[]) => xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
+
 function EarthCard({ game }: { game: GameState }) {
   const e = game.earth;
+  const f = terraformForecast(game);
+  const done = e.progress >= 100;
+  const short = f.fed < 1;
   return (
     <div className="earthcard">
       <h3>Restoration</h3>
       <Bar value={e.progress} max={100} tone="green" label={`${e.progress.toFixed(1)}%`} />
-      <p className="muted small">
-        {e.engines ? `${e.engines} Terraforming Engine${e.engines > 1 ? 's' : ''} at work. Daily feed from Moonbase: ${fmtKg(TERRAFORM_FEED.nitrogen * e.engines)} N₂, ${fmtKg(TERRAFORM_FEED.water * e.engines)} water, ${fmtKg(TERRAFORM_FEED.oxygen * e.engines)} O₂.`
-          : e.probed ? 'Research Terraforming Theory, then build Terraforming Engines.' : 'Send a probe to assess the damage.'}
-      </p>
+      {e.engines > 0 && !done && (
+        <>
+          <p className="small">
+            {e.engines} Terraforming Engine{e.engines > 1 ? 's' : ''} · {fmtRate(f.ratePerDay)} a day
+            {short ? ` (${fmtRate(f.fullRate)} when fully fed)` : ''}
+            {' · '}
+            {f.finishDay !== null
+              ? `restored in about ${f.daysLeft} days (${formatDate(f.finishDay)})${short ? ' at this rate' : ''}.`
+              : 'stalled until feed arrives.'}
+          </p>
+          {short && (
+            <p className="warn-text small">
+              Short of {listOf(f.short.map((k) => FEED_NAMES[k]))}: the engines got {Math.round(f.fed * 100)}% of their feed yesterday.
+              They draw on the same Moonbase stock that freighters carry to the colonies.
+            </p>
+          )}
+          <p className="muted small">
+            Engines add together: each one adds {TERRAFORM_RATE}% a day if it can be fed.
+            {f.queued ? ` ${f.queued} more engine${f.queued > 1 ? 's' : ''} in the build queue.` : ''}
+            {f.anotherAffordable && !f.queued ? ' Moonbase has the materials for another.' : ''}
+          </p>
+          <p className="muted small">
+            Daily feed from Moonbase: {fmtKg(TERRAFORM_FEED.nitrogen * e.engines)} N₂, {fmtKg(TERRAFORM_FEED.water * e.engines)} water, {fmtKg(TERRAFORM_FEED.oxygen * e.engines)} O₂.
+          </p>
+          {!short && f.feedDays < (f.daysLeft ?? 0) && (
+            <p className="muted small">Moonbase stock covers {f.feedDays} day{f.feedDays === 1 ? '' : 's'} of feed, before production and deliveries.</p>
+          )}
+        </>
+      )}
+      {!e.engines && (
+        <p className="muted small">
+          {!e.probed ? 'Send a probe to assess the damage.'
+            : !game.research.done.includes('terraforming') ? 'Research Terraforming Theory, then build Terraforming Engines.'
+            : `Build Terraforming Engines. Each restores ${TERRAFORM_RATE}% a day and engines add together: one takes about 500 days, four about 125.`}
+          {f.queued ? ` ${f.queued} in the build queue.` : ''}
+        </p>
+      )}
     </div>
   );
 }
