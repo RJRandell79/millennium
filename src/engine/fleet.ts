@@ -4,7 +4,7 @@ import { HAUL_PRIORITY, LS_MATS, MATERIAL_IDS, emptyStock, stockTotal } from './
 import { BLUEPRINT_BY_ID, SHIP_SPECS } from './data/blueprints';
 import { STORY } from './data/lore';
 import { driveSpeed, legDistance, travelDays } from './orbits';
-import { lsNeed, solarPerArray } from './economy';
+import { COMMISSION_PER_DAY, COMMISSION_PER_DELIVERY, commissioningOf, lsNeed, solarPerArray } from './economy';
 import { makeInstallation, moonbase, msg, setFlag } from './util';
 import { chance, rand } from './rng';
 
@@ -83,6 +83,13 @@ export function loadOutbound(s: GameState, ship: Ship, col: Installation): void 
 /** At a colony: unload, then fill the hold with ore (keeping the colony's life-support reserve). */
 function exchangeAtColony(s: GameState, ship: Ship, col: Installation): void {
   for (const id of MATERIAL_IDS) { col.stock[id] += ship.cargo[id]; }
+  const c = commissioningOf(col);
+  if (c < 1) {
+    col.commissioning = Math.min(1, c + COMMISSION_PER_DELIVERY);
+    msg(s, 'good', col.commissioning >= 1 ? `${col.name} fully commissioned` : `${col.name}: commissioning ${Math.round(col.commissioning * 100)}%`,
+      col.commissioning >= 1 ? `${ship.name}'s delivery finished the job: full ore output, and the population can grow.`
+        : `${ship.name}'s delivery brought the colony from ${Math.round(c * 100)}% to ${Math.round(col.commissioning * 100)}% commissioned.`, col.id);
+  }
   ship.cargo = emptyStock();
   for (const c of ship.consignments) {
     const bp = BLUEPRINT_BY_ID[c.blueprintId];
@@ -164,13 +171,15 @@ function arrive(s: GameState, ship: Ship, purpose: Purpose): void {
         return;
       }
       const col = makeInstallation(s, ship.at, false, ship.colonists);
+      col.founders = ship.colonists;
+      col.commissioning = 0;
       // Colony pods carry ~6 MW of generation: solar in the inner system, a compact reactor further out.
       const perArray = solarPerArray(s, col);
       if (perArray < 0.2) { col.equipment.reactor = 1; col.equipment.solar = 2; }
       else col.equipment.solar = Math.min(24, Math.ceil(6 / perArray));
       for (const id of MATERIAL_IDS) col.stock[id] += ship.cargo[id];
       if (s.bodies[ship.at].knowledge < 2) s.bodies[ship.at].knowledge = 2;
-      msg(s, 'good', `${col.name} founded`, `${ship.colonists} colonists have landed on ${body.name}. Assign a freighter to keep them supplied and bring their ore home.`, col.id);
+      msg(s, 'good', `${col.name} founded`, `${ship.colonists} colonists have landed on ${body.name}. The founding party is sheltered from shortages and raids. The colony will get itself running slowly on its own (about ${Math.ceil(1 / COMMISSION_PER_DAY)} days); each freighter delivery speeds that up. Assign a freighter to keep it supplied and bring its ore home.`, col.id);
       destroyShip(s, ship);
       return;
     }

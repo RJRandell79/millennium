@@ -59,8 +59,11 @@ export interface DayReport {
   deptEff: Partial<Record<DeptId, number>>;
   mined: Cost;
   consumed: Cost;
+  /** oxygen, water and power for life support were enough (nitrogen shortage is reported separately and isn't lethal) */
   lifeSupportOk: boolean;
   daysOfSupplies: number;   // min days of O2/water/N2 at current use
+  /** nitrogen ran short: habitat pressure falls, work slows and growth stops, but no one dies of it */
+  nitrogenShort?: boolean;
 }
 
 export interface Installation {
@@ -79,6 +82,10 @@ export interface Installation {
   commsWatch?: boolean;
   /** How this installation's population is managed. Absent means the default policy. */
   growth?: GrowthPolicy;
+  /** Colonies: the founding party, sheltered from shortages and raids. Absent in older saves (treated as 50). */
+  founders?: number;
+  /** Colonies: 0–1, how far the colony is up and running. Absent in older saves (treated as fully commissioned). */
+  commissioning?: number;
 }
 
 export type ShipType =

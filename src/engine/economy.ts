@@ -43,6 +43,21 @@ export function onDuty(inst: Installation): number {
 }
 const belowCap = (inst: Installation) => inst.population < popCap(inst);
 
+/** A colony ship's founding party: sheltered from supply shortages and raid casualties. Later growth isn't. */
+export const FOUNDING_PARTY = 50;
+/** Founders sheltered at this installation (none at Moonbase). */
+export const foundersOf = (inst: Installation): number => (inst.isMoonBase ? 0 : inst.founders ?? FOUNDING_PARTY);
+/** The population that can't be lost to shortages or raids right now. */
+export const shelteredOf = (inst: Installation): number => Math.min(foundersOf(inst), inst.population);
+/** Commissioning: a new colony gets itself running slowly on its own; each freighter delivery speeds it up. */
+export const COMMISSION_PER_DAY = 1 / 150;
+export const COMMISSION_PER_DELIVERY = 0.35;
+export const commissioningOf = (inst: Installation): number => (inst.isMoonBase ? 1 : inst.commissioning ?? 1);
+/** Days until fully commissioned without deliveries. */
+export const commissionDaysLeft = (inst: Installation): number => Math.ceil((1 - commissioningOf(inst)) / COMMISSION_PER_DAY);
+/** Work rate while nitrogen is short (lower habitat pressure). */
+export const NITROGEN_SHORT_WORK = 0.7;
+
 /** Moonbase's long-range listening watch, powered as part of Life Support. */
 export const COMMS_WATCH_MW = 0.4;
 
@@ -86,7 +101,7 @@ export function deptDemand(inst: Installation, d: DeptId): number {
 export function workforce(inst: Installation): number {
   const crew = onDuty(inst);
   const base = inst.isMoonBase ? 0.6 + 0.4 * (crew / 100) : 0.3 + 1.2 * (crew / 100);
-  return base * (belowCap(inst) ? GROWTH_POLICIES[growthPolicy(inst)].crisisWork : 1);
+  return base * (belowCap(inst) ? GROWTH_POLICIES[growthPolicy(inst)].crisisWork : 1) * (inst.report?.nitrogenShort ? NITROGEN_SHORT_WORK : 1);
 }
 
 export function lsNeed(inst: Installation): Record<'oxygen' | 'water' | 'nitrogen', number> {
@@ -104,8 +119,11 @@ export function miningRates(s: GameState, inst: Installation, eff: number): Cost
   const rich = body.richUntil && body.richUntil > s.day ? 1.5 : 1;
   const mult = MINE_BASE * (1 + 0.3 * inst.equipment.refinery) * eff * workforce(inst) * rich;
   const out: Cost = {};
+  // Until a colony is commissioned it extracts life-support volatiles at the full rate (that's what keeps it going),
+  // but its ore output scales with commissioning.
+  const c = commissioningOf(inst);
   for (const [k, v] of Object.entries(body.composition)) {
-    if (v && v > 0) out[k as MaterialId] = v * mult;
+    if (v && v > 0) out[k as MaterialId] = v * mult * ((LS_MATS as string[]).includes(k) ? 1 : c);
   }
   return out;
 }
@@ -145,36 +163,50 @@ export function runInstallation(s: GameState, inst: Installation): void {
   const lossMult = 1 + (1 - lsEff);
   const consumed: Cost = {};
   let ok = lsEff >= 0.5;
+  let nitrogenShort = false;
   let daysOfSupplies = 999;
   for (const m of LS_MATS) {
     const n = need[m as 'oxygen'] * lossMult;
     const take = Math.min(n, inst.stock[m]);
     inst.stock[m] -= take;
     consumed[m] = take;
-    if (take < n - 0.001) ok = false;
+    if (take < n - 0.001) { if (m === 'nitrogen') nitrogenShort = true; else ok = false; }
     const net = (mined[m] ?? 0) - n;
     if (net < 0) daysOfSupplies = Math.min(daysOfSupplies, inst.stock[m] / -net);
   }
 
+  if (nitrogenShort && !inst.report?.nitrogenShort && inst.population > 0) {
+    msg(s, 'warn', `${inst.name}: nitrogen short`, `Habitat pressure is falling. Work is ${Math.round((1 - NITROGEN_SHORT_WORK) * 100)}% slower and the population won't grow until nitrogen arrives. No one dies of this.`, inst.id);
+  }
+
   if (!ok && inst.population > 0) {
     inst.shortageDays += 1;
+    const sheltered = shelteredOf(inst);
+    const shelterNote = sheltered > 0 ? ` The founding party of ${sheltered} will survive in the shelter; anyone beyond them is at risk.` : '';
     if (inst.shortageDays === 1) {
-      msg(s, 'alert', `${inst.name}: life support failing`, lsEff < 0.5
+      msg(s, 'alert', `${inst.name}: life support failing`, (lsEff < 0.5
         ? 'Life support is short of power. Bring departments offline or build more power generation.'
-        : 'Oxygen, water or nitrogen has run out. Get supplies there now.', inst.id);
+        : 'Oxygen or water has run out. Get supplies there now.') + shelterNote, inst.id);
     }
-    if (inst.shortageDays > 2) {
-      const deaths = Math.max(1, Math.ceil(inst.population * 0.03));
-      inst.population = Math.max(0, inst.population - deaths);
-      if (inst.shortageDays % 5 === 3) msg(s, 'warn', `${inst.name}: casualties`, `${deaths} people died today. Population ${Math.floor(inst.population)}.`, inst.id);
+    if (inst.shortageDays > 2 && inst.population > sheltered) {
+      const before = inst.population;
+      inst.population = Math.max(sheltered, inst.population - Math.max(1, Math.ceil(inst.population * 0.03)));
+      const deaths = Math.round(before - inst.population);
+      if (inst.population <= sheltered && sheltered > 0) {
+        msg(s, 'warn', `${inst.name}: down to the founding party`, `${deaths} died today. The ${sheltered} founders are holding on in the shelter until supplies arrive.`, inst.id);
+      } else if (inst.shortageDays % 5 === 3) {
+        msg(s, 'warn', `${inst.name}: casualties`, `${deaths} people died today. Population ${Math.floor(inst.population)}.`, inst.id);
+      }
     }
   } else {
     if (inst.shortageDays > 0) msg(s, 'good', `${inst.name}: life support restored`, 'Supplies and power are back to normal.', inst.id);
     inst.shortageDays = 0;
     const limit = growthLimit(inst);
     const rate = baseGrowthRate(inst) * GROWTH_POLICIES[growthPolicy(inst)].rate;
-    if (lsEff >= 0.95 && inst.population < limit && rate > 0) {
-      inst.population = Math.min(limit, inst.population + Math.max(0.05, inst.population * rate));
+    // Growth needs the habitat at pressure and scales with how far a colony is commissioned.
+    const grow = rate * commissioningOf(inst);
+    if (lsEff >= 0.95 && !nitrogenShort && inst.population < limit && grow > 0) {
+      inst.population = Math.min(limit, inst.population + Math.max(0.05 * commissioningOf(inst), inst.population * grow));
     }
   }
 
@@ -194,7 +226,13 @@ export function runInstallation(s: GameState, inst: Installation): void {
     }
   }
 
-  inst.report = { powerGen: gen, powerDemand: demand, deptEff: eff, mined, consumed, lifeSupportOk: ok, daysOfSupplies };
+  inst.report = { powerGen: gen, powerDemand: demand, deptEff: eff, mined, consumed, lifeSupportOk: ok, daysOfSupplies, nitrogenShort };
+
+  // A new colony gets itself running slowly on its own.
+  if (!inst.isMoonBase && commissioningOf(inst) < 1) {
+    inst.commissioning = Math.min(1, commissioningOf(inst) + COMMISSION_PER_DAY);
+    if (inst.commissioning >= 1) msg(s, 'good', `${inst.name} fully commissioned`, 'The colony is fully up and running: full ore output, and the population can grow.', inst.id);
+  }
 
   if (inst.isMoonBase) {
     runResearch(s, inst, eff.research ?? 0);
