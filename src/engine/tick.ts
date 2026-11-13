@@ -6,6 +6,8 @@ import { runThreat, DEPT_NAMES } from './threat';
 import { clone, moonbase, msg, setFlag } from './util';
 import { chance, pick, randInt } from './rng';
 import { sunDistance } from './orbits';
+import { BLUEPRINT_BY_ID } from './data/blueprints';
+import { canAfford } from './data/materials';
 
 export const TERRAFORM_FEED = { nitrogen: 400, water: 800, oxygen: 200 } as const;
 export const TERRAFORM_RATE = 0.2; // % per engine per day when fully fed
@@ -59,6 +61,9 @@ function runEarth(s: GameState): void {
   let frac = 1;
   for (const [k, v] of Object.entries(TERRAFORM_FEED)) frac = Math.min(frac, mb.stock[k as 'water'] / (v * e.engines));
   frac = Math.max(0, Math.min(1, frac));
+  e.fed = frac;
+  e.short = (Object.entries(TERRAFORM_FEED) as ['nitrogen' | 'water' | 'oxygen', number][])
+    .filter(([k, v]) => mb.stock[k] < v * e.engines - 1e-6).map(([k]) => k);
   for (const [k, v] of Object.entries(TERRAFORM_FEED)) mb.stock[k as 'water'] -= v * e.engines * frac;
   if (frac < 1 && setFlag(s, `tf-starved-${Math.floor(s.day / 30)}`)) {
     msg(s, 'warn', 'Terraforming starved', 'The engines on Earth are short of nitrogen, water or oxygen. Bring more in from Titan, Triton, Ceres or Venus.', 'earth');
@@ -68,6 +73,77 @@ function runEarth(s: GameState): void {
   for (const [pct, story] of [[25, STORY.terraform25], [50, STORY.terraform50], [75, STORY.terraform75]] as const) {
     if (before < pct && e.progress >= pct) msg(s, 'story', story.title, story.text, 'earth');
   }
+  // Engines add together, which the player may not realise: say so once per engine count, when Moonbase can afford another.
+  const engineCost = BLUEPRINT_BY_ID.terraformer.cost;
+  if (e.progress < 100 && !s.queue.some((q) => q.blueprintId === 'terraformer') && canAfford(mb.stock, engineCost)
+    && setFlag(s, `tf-another-${e.engines}`)) {
+    const left = 100 - e.progress;
+    const now = Math.ceil(left / (TERRAFORM_RATE * e.engines));
+    const next = Math.ceil(left / (TERRAFORM_RATE * (e.engines + 1)));
+    msg(s, 'good', 'Materials for another Terraforming Engine',
+      `Moonbase has enough to build another engine. Engines add together: each restores ${TERRAFORM_RATE}% a day. With ${e.engines + 1} engines Earth would be restored in about ${next} days instead of ${now}, and the daily feed rises to match.`, 'earth');
+  }
+}
+
+/** What the player needs to plan restoration: current rate, finish estimate, feed in stock, and whether another engine is affordable. */
+export interface TerraformForecast {
+  engines: number;
+  queued: number;
+  /** % a day per engine when fed */
+  perEngine: number;
+  /** % a day on the last day's actual feed */
+  ratePerDay: number;
+  /** % a day with every engine fully fed */
+  fullRate: number;
+  /** 0–1: share of the engines' feed supplied on the last day */
+  fed: number;
+  /** feed materials that ran short on the last day */
+  short: ('nitrogen' | 'water' | 'oxygen')[];
+  /** days to 100%: at the full rate when fed, at today's rate when short (Infinity if nothing gets through); null with no engines */
+  daysLeft: number | null;
+  finishDay: number | null;
+  /** days of feed in Moonbase stock at the current engine count, before production and deliveries */
+  feedDays: number;
+  anotherAffordable: boolean;
+}
+
+export function terraformForecast(s: GameState): TerraformForecast {
+  const e = s.earth;
+  const mb = moonbase(s);
+  const queued = s.queue.filter((q) => q.blueprintId === 'terraformer').length;
+  // Days of feed already in stock. Daily production and deliveries come on top, so this is a floor.
+  let feedDays = Infinity;
+  if (e.engines > 0) {
+    for (const [k, v] of Object.entries(TERRAFORM_FEED)) feedDays = Math.min(feedDays, mb.stock[k as 'water'] / (v * e.engines));
+  }
+  // The rate is what the engines actually received on the last day. End-of-day stock is the wrong measure:
+  // income arrives the next day before the engines draw, so a base living hand to mouth can look unfed when it isn't.
+  const fed = e.engines > 0 ? Math.max(0, Math.min(1, e.fed ?? 1)) : 1;
+  const left = Math.max(0, 100 - e.progress);
+  const fullRate = TERRAFORM_RATE * e.engines;
+  const ratePerDay = e.engines > 0 && left > 0 ? fullRate * fed : 0;
+  // Estimate at today's rate when short, so the date doesn't promise more than the feed allows.
+  const rate = fed < 1 ? ratePerDay : fullRate;
+  const daysLeft = e.engines > 0 ? (rate > 0 ? Math.ceil(left / rate) : Infinity) : null;
+  return {
+    engines: e.engines,
+    queued,
+    perEngine: TERRAFORM_RATE,
+    ratePerDay,
+    fullRate,
+    fed,
+    short: e.short ?? [],
+    daysLeft,
+    finishDay: daysLeft === null || !Number.isFinite(daysLeft) ? null : s.day + daysLeft,
+    feedDays: Number.isFinite(feedDays) ? Math.floor(feedDays) : Infinity,
+    anotherAffordable: s.research.done.includes('terraforming') && canAfford(mb.stock, BLUEPRINT_BY_ID.terraformer.cost),
+  };
+}
+
+/** A rate for display: one decimal place, or two below 0.1, so a slow rate never reads as 0.0%. */
+export function fmtRate(pct: number): string {
+  if (pct <= 0) return '0%';
+  return pct < 0.1 ? `${pct.toFixed(2)}%` : `${pct.toFixed(1)}%`;
 }
 
 function runEvents(s: GameState): void {
