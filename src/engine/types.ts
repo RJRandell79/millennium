@@ -186,7 +186,15 @@ export interface Modifier {
   until: number;
 }
 
-export interface EarthState { engines: number; progress: number; probed: boolean }
+export interface EarthState {
+  engines: number;
+  progress: number;
+  probed: boolean;
+  /** share of the engines' feed actually supplied on the last day (0–1); absent before the first engine runs */
+  fed?: number;
+  /** feed materials that ran short on the last day */
+  short?: ('nitrogen' | 'water' | 'oxygen')[];
+}
 
 export interface GameSettings { varied: boolean; difficulty: 'relaxed' | 'standard' | 'hard' }
 
