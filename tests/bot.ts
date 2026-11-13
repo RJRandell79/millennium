@@ -19,9 +19,9 @@ function tryAct(s: GameState, r: { ok: boolean; state?: GameState }): GameState 
   return r.ok ? (r as { state: GameState }).state : s;
 }
 
-export type Opening = 'balanced' | 'defence' | 'asteroid' | 'research' | 'ceres';
+export type Opening = 'balanced' | 'defence' | 'asteroid' | 'research' | 'ceres' | 'drives';
 export type BotGrowth = GrowthPolicy | 'adaptive' | 'holdWhenFull' | 'reserveThenHold';
-export interface BotOpts { conquest?: boolean; opening?: Opening; growth?: BotGrowth }
+export interface BotOpts { conquest?: boolean; opening?: Opening; growth?: BotGrowth; /** research labs to build (default 2; max 4) */ labs?: number; /** terraforming engines to build (default 4) */ engines?: number }
 
 const OPENING_RESEARCH: Record<Opening, string[]> = {
   balanced: [],
@@ -29,6 +29,7 @@ const OPENING_RESEARCH: Record<Opening, string[]> = {
   asteroid: ['improvedRefining', 'factoryAutomation'],
   research: ['labExpansion', 'surveyor', 'ionDrive'],
   ceres: ['surveyor', 'colonyPods'],
+  drives: ['surveyor', 'colonyPods', 'ionDrive', 'fission', 'fusionDrive'],
 };
 
 export function botTurn(s: GameState, log: BotLog, opts: BotOpts = {}): GameState {
@@ -94,7 +95,7 @@ export function botTurn(s: GameState, log: BotLog, opts: BotOpts = {}): GameStat
   if (done('orbitalLaser') && e.lasers < Math.min(10, 2 + s.threat.wave)) want('laser', 1);
   if (done('improvedRefining') && e.refinery < 3) want('refinery', 1);
   if (mb.population > 100 * e.habitat - 15 && e.habitat < 6) want('habitat', 1);
-  if (done('labExpansion') && e.labs < 2) want('lab', 1);
+  if (done('labExpansion') && e.labs < (opts.labs ?? 2)) want('lab', 1);
   if (done('factoryAutomation') && e.factories < 2) want('factory', 1);
   if (done('shields') && e.shields < 2) want('shield', 1);
   if (done('surveyor') && count('surveyor') < 1) want('surveyor', 1);
@@ -107,7 +108,7 @@ export function botTurn(s: GameState, log: BotLog, opts: BotOpts = {}): GameStat
   if (done('fission') && e.reactor < 2 && mb.stock.uranium > 1500) want('reactor', 1);
   if (done('battlecruiser') && count('battlecruiser') + queued('battlecruiser') < 6 && s.threat.status === 'hostile') want('battlecruiser', 1);
   if (done('planetaryAssault') && count('troopship') + queued('troopship') < 1 && s.threat.status === 'hostile') want('troopship', 1);
-  if (done('terraforming') && s.earth.engines + queued('terraformer') < 4) want('terraformer', 1);
+  if (done('terraforming') && s.earth.engines + queued('terraformer') < (opts.engines ?? 4)) want('terraformer', 1);
   for (const c of colonies) {
     const r = c.report;
     if (r.powerGen < r.powerDemand && c.equipment.solar + queued('solar') < 20) {

@@ -1,3 +1,4 @@
+import { researchCost } from './economy';
 // Player commands. Each takes the current state and returns a new state, or an error string.
 import type { GrowthPolicy, DeptId, GameState, Ship } from './types';
 import { BLUEPRINT_BY_ID } from './data/blueprints';
@@ -77,7 +78,7 @@ export function setResearch(prev: GameState, id: string | undefined): ActionResu
     // Switching keeps half the progress as "general research" — discourages thrashing without punishing hard.
     s.research.progress = s.research.current ? s.research.progress * 0.5 : s.research.progress;
     s.research.current = id;
-    if (s.research.progress >= def.days) s.research.progress = def.days - 1;
+    if (s.research.progress >= researchCost(def)) s.research.progress = researchCost(def) - 1;
   }
   return ok(s);
 }
