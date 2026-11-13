@@ -3,7 +3,7 @@ import {
   newGame, advanceDay, advanceUntilEvent, serialize, deserialize, sendShip, queueBuild, setResearch,
   travelDays, position, moonbase, toggleDept, raidSize, toggleCommsWatch, readFragment, deptDemand,
   archiveStats, FRAGMENTS, RESEARCH_BY_ID, COMMS_WATCH_MW, type GameState,
-  setGrowthPolicy, lsNeed, workforce, popCap,
+  setGrowthPolicy, lsNeed, workforce, popCap, growthLimit, reserveOf,
 } from '../src/engine';
 import { playBot } from './bot';
 
@@ -127,14 +127,49 @@ describe('population policy', () => {
     expect(mb().growth).toBeUndefined();
     const base = lsNeed({ ...mb(), growth: 'steady' }).oxygen;
     expect(lsNeed(mb()).oxygen).toBeCloseTo(base * 1.1, 6);
-    // Grow costs nothing extra once at capacity.
-    expect(lsNeed({ ...mb(), population: popCap(mb()) }).oxygen).toBeCloseTo(lsNeed({ ...mb(), population: popCap(mb()), growth: 'steady' }).oxygen, 6);
+    // Grow costs nothing extra once the reserve is full.
+    const full = popCap(mb()) * 1.1;
+    expect(lsNeed({ ...mb(), population: full }).oxygen).toBeCloseTo(lsNeed({ ...mb(), population: full, growth: 'steady' }).oxygen, 6);
     s = okState(setGrowthPolicy(s, 'moonbase', 'hold'));
     expect(lsNeed(mb()).oxygen).toBeCloseTo(base * 0.9, 6);
     expect(workforce(mb())).toBeCloseTo(workforce({ ...mb(), growth: 'grow' }) * 1.1, 6);
     const p0 = mb().population;
     for (let i = 0; i < 30; i++) s = advanceDay(s).state;
     expect(mb().population).toBeLessThanOrEqual(p0);
+  });
+
+  it('at full capacity every policy keeps a trade-off: reserve versus output (Moonbase)', () => {
+    const s = newGame(3);
+    const mb = moonbase(s); // starts full: 100 of 100
+    expect(mb.population).toBe(popCap(mb));
+    // Grow keeps growing into an off-duty reserve of up to 10%.
+    expect(growthLimit(mb)).toBeCloseTo(110, 6);
+    expect(growthLimit({ ...mb, growth: 'steady' })).toBeCloseTo(105, 6);
+    expect(growthLimit({ ...mb, growth: 'hold' })).toBeCloseTo(100, 6);
+    const withReserve = { ...mb, population: 110 };
+    expect(reserveOf(withReserve)).toBeCloseTo(10, 6);
+    // The reserve eats but doesn't work on Grow; on Hold it goes on duty.
+    expect(workforce(withReserve)).toBeCloseTo(workforce(mb), 6);
+    expect(workforce({ ...withReserve, growth: 'hold' })).toBeGreaterThan(workforce(withReserve));
+    // Hold's rationing and crisis effort only apply below capacity: no free bonus when full.
+    expect(lsNeed({ ...mb, growth: 'hold' }).oxygen).toBeCloseTo(lsNeed({ ...mb, growth: 'steady' }).oxygen, 6);
+    expect(workforce({ ...mb, growth: 'hold' })).toBeCloseTo(workforce(mb), 6);
+  });
+
+  it('a Grow reserve builds up at Moonbase and absorbs the first losses', () => {
+    let s = newGame(3);
+    for (let i = 0; i < 60; i++) s = advanceDay(s).state;
+    const mb = moonbase(s);
+    expect(mb.population).toBeGreaterThan(popCap(mb));
+    expect(mb.population).toBeLessThanOrEqual(growthLimit(mb) + 1e-9);
+    const crewBefore = workforce(mb);
+    expect(workforce({ ...mb, population: mb.population - reserveOf(mb) })).toBeCloseTo(crewBefore, 6);
+  });
+
+  it('colonies keep their 100 cap: no reserve', () => {
+    const s = newGame(3);
+    const col = { ...moonbase(s), isMoonBase: false, population: 100 };
+    expect(growthLimit(col)).toBe(100);
   });
 
   it('grows fastest on Grow, slower on Steady', () => {

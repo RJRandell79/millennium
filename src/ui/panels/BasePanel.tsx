@@ -4,7 +4,7 @@ import {
   type DeptId, type GameState, type Installation, MATERIALS, DEPT_NAMES, BODY_BY_ID,
   fmtKg, popCap, toggleDept, researchRate, productionRate, BLUEPRINT_BY_ID, RESEARCH_BY_ID, solarPerArray,
   deptDemand, raidSize, formatDate, renameInstallation, toggleCommsWatch, COMMS_WATCH_MW,
-  GROWTH_POLICIES, growthPolicy, lsNeed, baseGrowthRate, setGrowthPolicy, type GrowthPolicy,
+  GROWTH_POLICIES, growthPolicy, lsNeed, baseGrowthRate, setGrowthPolicy, growthLimit, reserveOf, type GrowthPolicy,
 } from '../../engine';
 import { Bar, Section, Toggle, pct } from '../components/common';
 import { BaseScene } from '../components/BaseScene';
@@ -44,7 +44,7 @@ function Overview({ game, inst }: { game: GameState; inst: Installation }) {
         <span className="muted">{body.name}{inst.isMoonBase ? ' · Shackleton crater' : ` · founded ${formatDate(inst.foundedDay)}`}</span>
       </div>
       <div className="statgrid">
-        <Stat label="Population" value={`${Math.floor(inst.population)} / ${cap}`} warn={!r.lifeSupportOk} />
+        <Stat label="Population" value={`${Math.floor(inst.population)} / ${cap}${reserveOf(inst) >= 1 ? ` (+${Math.floor(reserveOf(inst))} reserve)` : ''}`} warn={!r.lifeSupportOk} />
         <Stat label="Power" value={`${r.powerGen.toFixed(1)} / ${r.powerDemand.toFixed(1)} MW`} warn={r.powerGen < r.powerDemand} />
         <Stat label="Supplies" value={r.daysOfSupplies >= 999 ? 'Self-sufficient' : `${Math.floor(r.daysOfSupplies)} days`} warn={r.daysOfSupplies < 30} />
         {!inst.isMoonBase && <Stat label="Freighters" value={freighters.length ? freighters.map((f) => f.name).join(', ') : 'None assigned'} warn={!freighters.length} />}
@@ -61,11 +61,22 @@ function GrowthControl({ inst }: { inst: Installation }) {
   const act = useGame((s) => s.act);
   const current = growthPolicy(inst);
   const p = GROWTH_POLICIES[current];
-  const atCap = inst.population >= popCap(inst);
-  const perDay = atCap ? 0 : inst.population * baseGrowthRate(inst) * p.rate;
-  const ls = current === 'grow' && atCap ? 0 : Math.round((p.lsMult - 1) * 100);
-  const work = Math.round((p.work - 1) * 100);
+  const cap = popCap(inst);
+  const limit = growthLimit(inst);
+  const below = inst.population < cap;
+  const growing = inst.population < limit && p.rate > 0;
+  const stalled = growing && (inst.report.deptEff.lifeSupport ?? 0) < 0.95;
+  const perDay = growing ? Math.max(0.05, inst.population * baseGrowthRate(inst) * p.rate) : 0;
+  const ls = current === 'grow' ? (growing ? 10 : 0) : current === 'hold' && below ? -10 : 0;
+  const work = current === 'hold' && below ? 10 : 0;
+  const reserve = Math.floor(reserveOf(inst));
+  const reserveMax = Math.round(cap * (inst.isMoonBase ? p.reserve : 0));
   const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+  const now = stalled ? 'growth paused: life support is short'
+    : growing ? `about ${perDay.toFixed(1)} more people a day${below ? '' : ' into the reserve'}`
+    : !below && current === 'hold' && reserve > 0 ? `no growth; ${reserve} from the reserve on duty`
+    : !below ? (inst.isMoonBase && current !== 'hold' ? 'reserve full' : 'at capacity, no growth')
+    : 'no growth';
   return (
     <div className="growth">
       <span className="stat-label">Population policy</span>
@@ -78,15 +89,22 @@ function GrowthControl({ inst }: { inst: Installation }) {
         ))}
       </div>
       <p className="dept-detail">
-        {p.blurb}{' '}
+        {inst.isMoonBase ? p.blurb : COLONY_BLURB[current]}{' '}
         <span className="muted">
-          Now: {atCap ? 'at capacity, no growth' : perDay > 0 ? `about ${perDay.toFixed(1)} more people a day` : 'no growth'}
+          Now: {now}
+          {inst.isMoonBase && reserveMax > 0 ? ` · reserve ${reserve} of ${reserveMax}` : ''}
           {ls ? ` · life support ${sign(ls)}%` : ''}{work ? ` · work rate ${sign(work)}%` : ''}.
         </span>
       </p>
     </div>
   );
 }
+
+const COLONY_BLURB: Record<GrowthPolicy, string> = {
+  grow: 'Full growth to the colony\'s 100. Life support +10% a head while numbers are rising.',
+  steady: 'Slow growth with no life-support surcharge.',
+  hold: 'No growth. Below capacity, tighter rationing cuts life-support use by 10% and the crew works 10% harder.',
+};
 
 function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (

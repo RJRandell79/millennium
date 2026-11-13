@@ -1,10 +1,12 @@
 // Experiment: does any population policy dominate? Run with `npm run experiment:growth`.
 // The bot can only rule things out; whether choosing feels meaningful is for human playtests.
+declare const process: { env: Record<string, string | undefined> };
 import { newGame, moonbase, advanceDay, totalPopulation, type GameState } from '../src/engine';
 import { botTurn, type BotGrowth } from './bot';
 
-const POLICIES: BotGrowth[] = ['grow', 'steady', 'hold', 'adaptive'];
-const SEEDS = [11, 202, 3003, 4040, 5150, 6262, 7373, 8484, 9595, 10606, 11717, 12828];
+const POLICIES: BotGrowth[] = (process.env.POLICIES?.split(',') as BotGrowth[]) ?? ['grow', 'adaptive', 'steady', 'hold', 'holdWhenFull', 'reserveThenHold'];
+// 36 seeds per difficulty by default; set SEEDS=n to change.
+const SEEDS = Array.from({ length: Number(process.env.SEEDS ?? 36) }, (_, i) => 11 + i * 1013);
 
 function run(seed: number, growth: BotGrowth, difficulty: 'standard' | 'hard') {
   let s: GameState = newGame(seed, { difficulty });
@@ -32,7 +34,7 @@ it('compares population policies', () => {
       const rs = SEEDS.map((sd) => run(sd, g, diff));
       const wins = rs.filter((r) => r.win).map((r) => r.win!);
       const avg = (a: number[]) => (a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : NaN);
-      console.log(`${g.padEnd(9)} | ${String(wins.length).padStart(2)}/${rs.length} | ${avg(wins)} | ${Math.min(...wins)}-${Math.max(...wins)} | ${avg(rs.map((r) => r.firstColony))} | ${avg(rs.map((r) => r.col365))} | ${avg(rs.map((r) => r.pop365))} | ${avg(rs.map((r) => r.popEnd))} | ${avg(rs.map((r) => r.raidDeaths))} | ${avg(rs.map((r) => r.shortageDays))}`);
+      console.log(`${g.padEnd(12)} | ${String(wins.length).padStart(2)}/${rs.length} | ${avg(wins)} | ${Math.min(...wins)}-${Math.max(...wins)} | ${avg(rs.map((r) => r.firstColony))} | ${avg(rs.map((r) => r.col365))} | ${avg(rs.map((r) => r.pop365))} | ${avg(rs.map((r) => r.popEnd))} | ${avg(rs.map((r) => r.raidDeaths))} | ${avg(rs.map((r) => r.shortageDays))}`);
     }
   }
 }, 3600000);
