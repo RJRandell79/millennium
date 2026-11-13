@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { useGame, readAutosave } from '../store/useGame';
+import { useGame, type SaveInfo } from '../store/useGame';
 import { archiveStats, formatDate, score, serialize, totalPopulation, type GameSettings } from '../engine';
+import { canDownload } from '../platform/download';
 import { TopBar } from './TopBar';
 import { TabBar } from './TabBar';
 import { BasePanel } from './panels/BasePanel';
@@ -13,7 +14,35 @@ import { ArchivePanel } from './panels/ArchivePanel';
 
 export function App() {
   const game = useGame((s) => s.game);
+  const initCloud = useGame((s) => s.initCloud);
+  const flushSaves = useGame((s) => s.flushSaves);
+  // Connect cloud saves once; save immediately whenever the app is hidden or closed.
+  useEffect(() => { void initCloud(); }, [initCloud]);
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === 'hidden') flushSaves(); };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', flushSaves);
+    return () => { document.removeEventListener('visibilitychange', onHide); window.removeEventListener('pagehide', flushSaves); };
+  }, [flushSaves]);
   return game ? <GameShell /> : <TitleScreen />;
+}
+
+/** "Day 134 · 2 colonies · cloud, 3 min ago" */
+export function describeSave(s: SaveInfo): string {
+  const mins = Math.round((Date.now() - s.savedAt) / 60000);
+  const ago = !s.savedAt ? '' : mins < 1 ? 'just now' : mins < 60 ? `${mins} min ago` : mins < 1440 ? `${Math.round(mins / 60)} h ago` : `${Math.round(mins / 1440)} d ago`;
+  return `Day ${s.day} · ${s.colonies} ${s.colonies === 1 ? 'colony' : 'colonies'} · ${s.where === 'cloud' ? 'cloud' : 'this device'}${ago ? `, ${ago}` : ''}`;
+}
+
+function CloudLine() {
+  const cloud = useGame((s) => s.cloud);
+  if (cloud.status === 'checking') return <p className="muted small">Cloud save: connecting…</p>;
+  if (cloud.status === 'off') return <p className="muted small">Cloud save isn't available here: saves stay on this device. Use Download save to keep a copy.</p>;
+  return (
+    <p className={`small ${cloud.problem ? 'warn-text' : 'good-text'}`}>
+      Cloud save on{cloud.lastSavedAt ? `: last saved ${new Date(cloud.lastSavedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}.{cloud.problem ? ` ${cloud.problem}` : ' Your game follows you between devices.'}
+    </p>
+  );
 }
 
 function GameShell() {
@@ -101,20 +130,14 @@ function Menu() {
   const saveSlot = useGame((s) => s.saveSlot);
   const loadSlot = useGame((s) => s.loadSlot);
   const slotInfo = useGame((s) => s.slotInfo);
+  const downloadSave = useGame((s) => s.downloadSave);
+  useGame((s) => s.cloud); // re-render slot labels when cloud saves arrive
   const quit = useGame((s) => s.quit);
   const game = useGame((s) => s.game);
   const showToast = useGame((s) => s.showToast);
+  const [downloadable, setDownloadable] = useState(false);
+  useEffect(() => { if (open) void canDownload().then(setDownloadable); }, [open]);
   if (!open || !game) return null;
-  const exportSave = () => {
-    try {
-      const blob = new Blob([serialize(game)], { type: 'application/json' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `millennium-day${game.day}.json`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    } catch { showToast('Download blocked here — use Copy save instead.'); }
-  };
   const copySave = () => {
     navigator.clipboard.writeText(serialize(game))
       .then(() => showToast('Save copied — paste it into a .json file to keep it.', 'info'))
@@ -124,17 +147,21 @@ function Menu() {
     <div className="modal-back" onClick={() => setMenu(false)}>
       <div className="modal menu" onClick={(e) => e.stopPropagation()}>
         <h2>Menu</h2>
-        <p className="muted small">Seed {game.seed} · {game.settings.difficulty} · {game.settings.varied ? 'varied worlds' : 'classic worlds'}. The game autosaves every 5 days.</p>
+        <p className="muted small">Seed {game.seed} · {game.settings.difficulty} · {game.settings.varied ? 'varied worlds' : 'classic worlds'}. The game autosaves as you play and whenever you pause or leave.</p>
+        <CloudLine />
         <ArchiveStatsLine />
-        {[1, 2, 3].map((n) => (
-          <div key={n} className="slot">
-            <span>Slot {n}: <span className="muted">{slotInfo(n) ?? 'empty'}</span></span>
-            <button className="btn" onClick={() => saveSlot(n)}>Save</button>
-            <button className="btn ghost" disabled={!slotInfo(n)} onClick={() => { if (loadSlot(n)) showToast(`Loaded slot ${n}`, 'info'); }}>Load</button>
-          </div>
-        ))}
+        {[1, 2, 3].map((n) => {
+          const info = slotInfo(n);
+          return (
+            <div key={n} className="slot">
+              <span>Slot {n}: <span className="muted">{info ? describeSave(info) : 'empty'}</span></span>
+              <button className="btn" onClick={() => { void saveSlot(n); }}>Save</button>
+              <button className="btn ghost" disabled={!info} onClick={() => { void loadSlot(n).then((ok) => { if (ok) showToast(`Loaded slot ${n}`, 'info'); }); }}>Load</button>
+            </div>
+          );
+        })}
         <div className="modal-actions">
-          {window.self === window.top && <button className="btn ghost" onClick={exportSave}>Download save</button>}
+          {downloadable && <button className="btn ghost" onClick={() => { void downloadSave(); }}>Download save</button>}
           <button className="btn ghost" onClick={copySave}>Copy save</button>
           <button className="btn ghost" onClick={quit}>Title screen</button>
           <button className="btn" onClick={() => setMenu(false)}>Resume</button>
@@ -181,7 +208,10 @@ function TitleScreen() {
   const [difficulty, setDifficulty] = useState<GameSettings['difficulty']>('standard');
   const [varied, setVaried] = useState(true);
   const [seed, setSeed] = useState('');
-  const auto = readAutosave();
+  const autosaveInfo = useGame((s) => s.autosaveInfo);
+  const continueGame = useGame((s) => s.continueGame);
+  const cloud = useGame((s) => s.cloud);
+  const auto = autosaveInfo();
   const importFile = (f: File | undefined) => {
     if (!f) return;
     f.text().then((t) => load(t));
@@ -193,7 +223,13 @@ function TitleScreen() {
         <p className="title-kicker">AFTER IAN BIRD · 1989</p>
         <h1>MILLENNIUM <span>2.2</span></h1>
         <p className="title-sub">30 January 2200. Earth is dead. Moonbase is all that's left.</p>
-        {auto && <button className="btn wide big" onClick={() => load(auto)}>Continue</button>}
+        {auto && (
+          <>
+            <button className="btn wide big" onClick={() => { void continueGame(); }}>Continue</button>
+            <p className="muted small center">{describeSave(auto)}</p>
+          </>
+        )}
+        {!auto && cloud.status === 'checking' && <p className="muted small center">Looking for a cloud save…</p>}
         <div className="title-opts">
           <label>Difficulty
             <select value={difficulty} onChange={(e) => setDifficulty(e.target.value as GameSettings['difficulty'])}>

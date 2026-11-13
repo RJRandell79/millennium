@@ -87,7 +87,7 @@ export const BLUEPRINTS: Blueprint[] = [
   // Endgame
   { id: 'terraformer', name: 'Terraforming Engine', category: 'Endgame', terraformer: true, install: 'earth', days: 25, requires: 'terraforming',
     cost: { titanium: 30000, iron: 30000, chromium: 3000, silver: 2000, uranium: 3000, platinum: 1500, nitrogen: 20000 },
-    desc: 'Lands on Earth and starts restoring the atmosphere. Each engine consumes 400 kg nitrogen, 800 kg water and 200 kg oxygen a day from Moonbase.' },
+    desc: 'Lands on Earth and restores 0.2% a day. Engines add together: one takes about 500 days, four about 125. Each engine consumes 400 kg nitrogen, 800 kg water and 200 kg oxygen a day from Moonbase.' },
 ];
 
 export const BLUEPRINT_BY_ID: Record<string, Blueprint> = Object.fromEntries(BLUEPRINTS.map((b) => [b.id, b]));

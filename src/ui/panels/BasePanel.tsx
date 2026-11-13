@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useGame } from '../../store/useGame';
 import {
-  type DeptId, type GameState, type Installation, MATERIALS, DEPT_NAMES, BODY_BY_ID, LS_PER_PERSON,
+  type DeptId, type GameState, type Installation, MATERIALS, DEPT_NAMES, BODY_BY_ID,
   fmtKg, popCap, toggleDept, researchRate, productionRate, BLUEPRINT_BY_ID, RESEARCH_BY_ID, solarPerArray,
   deptDemand, raidSize, formatDate, renameInstallation, toggleCommsWatch, COMMS_WATCH_MW,
+  GROWTH_POLICIES, growthPolicy, lsNeed, baseGrowthRate, setGrowthPolicy, growthLimit, reserveOf, type GrowthPolicy,
+  terraformForecast, fmtRate,
 } from '../../engine';
 import { Bar, Section, Toggle, pct } from '../components/common';
 import { BaseScene } from '../components/BaseScene';
@@ -43,14 +45,67 @@ function Overview({ game, inst }: { game: GameState; inst: Installation }) {
         <span className="muted">{body.name}{inst.isMoonBase ? ' · Shackleton crater' : ` · founded ${formatDate(inst.foundedDay)}`}</span>
       </div>
       <div className="statgrid">
-        <Stat label="Population" value={`${Math.floor(inst.population)} / ${cap}`} warn={!r.lifeSupportOk} />
+        <Stat label="Population" value={`${Math.floor(inst.population)} / ${cap}${reserveOf(inst) >= 1 ? ` (+${Math.floor(reserveOf(inst))} reserve)` : ''}`} warn={!r.lifeSupportOk} />
         <Stat label="Power" value={`${r.powerGen.toFixed(1)} / ${r.powerDemand.toFixed(1)} MW`} warn={r.powerGen < r.powerDemand} />
         <Stat label="Supplies" value={r.daysOfSupplies >= 999 ? 'Self-sufficient' : `${Math.floor(r.daysOfSupplies)} days`} warn={r.daysOfSupplies < 30} />
         {!inst.isMoonBase && <Stat label="Freighters" value={freighters.length ? freighters.map((f) => f.name).join(', ') : 'None assigned'} warn={!freighters.length} />}
       </div>
+      <GrowthControl inst={inst} />
     </section>
   );
 }
+
+const POLICY_ORDER: GrowthPolicy[] = ['grow', 'steady', 'hold'];
+
+/** Population policy: the consequences are shown as numbers; which is wise is left to the player. */
+function GrowthControl({ inst }: { inst: Installation }) {
+  const act = useGame((s) => s.act);
+  const current = growthPolicy(inst);
+  const p = GROWTH_POLICIES[current];
+  const cap = popCap(inst);
+  const limit = growthLimit(inst);
+  const below = inst.population < cap;
+  const growing = inst.population < limit && p.rate > 0;
+  const stalled = growing && (inst.report.deptEff.lifeSupport ?? 0) < 0.95;
+  const perDay = growing ? Math.max(0.05, inst.population * baseGrowthRate(inst) * p.rate) : 0;
+  const ls = current === 'grow' ? (growing ? 10 : 0) : current === 'hold' && below ? -10 : 0;
+  const work = current === 'hold' && below ? 10 : 0;
+  const reserve = Math.floor(reserveOf(inst));
+  const reserveMax = Math.round(cap * (inst.isMoonBase ? p.reserve : 0));
+  const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+  const now = stalled ? 'growth paused: life support is short'
+    : growing ? `about ${perDay.toFixed(1)} more people a day${below ? '' : ' into the reserve'}`
+    : !below && current === 'hold' && reserve > 0 ? `no growth; ${reserve} from the reserve on duty`
+    : !below ? (inst.isMoonBase && current !== 'hold' ? 'reserve full' : 'at capacity, no growth')
+    : 'no growth';
+  return (
+    <div className="growth">
+      <span className="stat-label">Population policy</span>
+      <div className="segmented" role="radiogroup" aria-label="Population policy">
+        {POLICY_ORDER.map((g) => (
+          <button key={g} role="radio" aria-checked={g === current} className={g === current ? 'active' : ''}
+            onClick={() => act((s) => setGrowthPolicy(s, inst.id, g))}>
+            {GROWTH_POLICIES[g].name}
+          </button>
+        ))}
+      </div>
+      <p className="dept-detail">
+        {inst.isMoonBase ? p.blurb : COLONY_BLURB[current]}{' '}
+        <span className="muted">
+          Now: {now}
+          {inst.isMoonBase && reserveMax > 0 ? ` · reserve ${reserve} of ${reserveMax}` : ''}
+          {ls ? ` · life support ${sign(ls)}%` : ''}{work ? ` · work rate ${sign(work)}%` : ''}.
+        </span>
+      </p>
+    </div>
+  );
+}
+
+const COLONY_BLURB: Record<GrowthPolicy, string> = {
+  grow: 'Full growth to the colony\'s 100. Life support +10% a head while numbers are rising.',
+  steady: 'Slow growth with no life-support surcharge.',
+  hold: 'No growth. Below capacity, tighter rationing cuts life-support use by 10% and the crew works 10% harder.',
+};
 
 function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
@@ -67,7 +122,8 @@ function deptDetail(game: GameState, inst: Installation, d: DeptId): string {
   switch (d) {
     case 'lifeSupport': {
       const p = Math.floor(inst.population);
-      return `${p} people use ${fmtKg(p * LS_PER_PERSON.oxygen)} O₂, ${fmtKg(p * LS_PER_PERSON.water)} water, ${fmtKg(p * LS_PER_PERSON.nitrogen)} N₂ a day.${inst.population < popCap(inst) ? ' Growing.' : ' At capacity.'}`;
+      const n = lsNeed(inst);
+      return `${p} people use ${fmtKg(n.oxygen)} O₂, ${fmtKg(n.water)} water, ${fmtKg(n.nitrogen)} N₂ a day.${inst.population >= popCap(inst) ? ' At capacity.' : growthPolicy(inst) === 'hold' ? ' Holding.' : ' Growing.'}`;
     }
     case 'energy': {
       const per = solarPerArray(game, inst);
@@ -235,12 +291,32 @@ function Objectives({ game }: { game: GameState }) {
         <span>Objectives</span>
         <span className="muted small">{done}/{items.length} {open ? '▴' : '▾'}</span>
       </button>
-      {game.earth.engines > 0 && <Bar value={game.earth.progress} max={100} tone="green" label={`Earth restoration ${game.earth.progress.toFixed(1)}%`} />}
+      {game.earth.engines > 0 && <RestorationBar game={game} />}
       {open && (
         <ol className="obj-list">
           {items.map(([t, ok]) => <li key={t} className={ok ? 'done' : ''}>{ok ? '✓' : '○'} {t}</li>)}
         </ol>
       )}
     </section>
+  );
+}
+
+function RestorationBar({ game }: { game: GameState }) {
+  const f = terraformForecast(game);
+  const done = game.earth.progress >= 100;
+  const short = f.fed < 1;
+  const eta = done ? '' : f.finishDay === null ? ' · stalled' : ` · ~${f.daysLeft} days${short ? ' at this rate' : ' left'}`;
+  return (
+    <>
+      <Bar value={game.earth.progress} max={100} tone="green" label={`Earth restoration ${game.earth.progress.toFixed(1)}%${eta}`} />
+      {!done && (
+        <p className={short ? 'warn-text small' : 'muted small'}>
+          {f.engines} engine{f.engines > 1 ? 's' : ''} · {fmtRate(f.ratePerDay)} a day
+          {short ? `, short of ${f.short.join(' and ')} (${fmtRate(f.fullRate)} when fully fed).` : '.'}
+          {' '}Each extra engine adds {f.perEngine}% a day if it can be fed
+          {f.anotherAffordable && !f.queued ? '; Moonbase has the materials for another.' : '.'}
+        </p>
+      )}
+    </>
   );
 }

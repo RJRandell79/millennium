@@ -1,4 +1,4 @@
-import type { Cost, DeptId, GameState, Installation, MaterialId } from './types';
+import type { Cost, DeptId, GameState, GrowthPolicy, Installation, MaterialId } from './types';
 import { LS_MATS, LS_PER_PERSON, canAfford, pay } from './data/materials';
 import { BLUEPRINT_BY_ID } from './data/blueprints';
 import { RESEARCH_BY_ID } from './data/research';
@@ -11,6 +11,37 @@ import { addShip } from './newGame';
 export const POWER_ORDER: DeptId[] = ['lifeSupport', 'defence', 'flightDeck', 'refinery', 'production', 'research'];
 
 export const MINE_BASE = 250; // kg/day per abundance point
+
+/**
+ * Population policy per installation: operational settings, not a ladder. Each keeps an advantage
+ * and a cost at every population level, including when the installation is full.
+ *  - grow:   full growth. At Moonbase, growth carries on past housing capacity into a reserve of up to
+ *            10%: trainees and dependants who eat but aren't on the duty roster. Raids and colony ships
+ *            take from the reserve first. Life support +10% a head while numbers are rising.
+ *  - steady: 40% growth, a reserve of up to 5%, no life-support surcharge.
+ *  - hold:   no growth and no reserve kept: anyone in reserve goes on the duty roster. Below capacity
+ *            it is a crisis footing: life support -10% and the crew works 10% harder.
+ * Colonies have no reserve (their 100 cap is unchanged); there, policies only differ below capacity.
+ */
+export const GROWTH_POLICIES: Record<GrowthPolicy, { name: string; rate: number; reserve: number; lsMult: number; crisisWork: number; blurb: string }> = {
+  grow:   { name: 'Grow',   rate: 1,   reserve: 0.10, lsMult: 1.1, crisisWork: 1,   blurb: 'Full growth. Moonbase grows past capacity into a reserve of up to 10%, off the duty roster, that absorbs raid losses and colony ship departures. Life support +10% a head while numbers are rising.' },
+  steady: { name: 'Steady', rate: 0.4, reserve: 0.05, lsMult: 1,   crisisWork: 1,   blurb: 'Slow growth with no life-support surcharge. Moonbase keeps a reserve of up to 5%.' },
+  hold:   { name: 'Hold',   rate: 0,   reserve: 0,    lsMult: 0.9, crisisWork: 1.1, blurb: 'No growth and no reserve: everyone is on the duty roster. Below capacity, tighter rationing cuts life-support use by 10% and the crew works 10% harder.' },
+};
+export const DEFAULT_GROWTH: GrowthPolicy = 'grow';
+export const growthPolicy = (inst: Installation): GrowthPolicy => inst.growth ?? DEFAULT_GROWTH;
+/** Base daily growth rate before policy. */
+export const baseGrowthRate = (inst: Installation): number => (inst.isMoonBase ? 0.004 : 0.0025);
+/** Highest population the policy grows towards: housing capacity plus the reserve (Moonbase only). */
+export const growthLimit = (inst: Installation): number =>
+  popCap(inst) * (1 + (inst.isMoonBase ? GROWTH_POLICIES[growthPolicy(inst)].reserve : 0));
+/** People beyond housing capacity. On Grow and Steady they are off the duty roster. */
+export const reserveOf = (inst: Installation): number => Math.max(0, inst.population - popCap(inst));
+/** People on the duty roster. */
+export function onDuty(inst: Installation): number {
+  return growthPolicy(inst) === 'hold' ? inst.population : Math.min(inst.population, popCap(inst));
+}
+const belowCap = (inst: Installation) => inst.population < popCap(inst);
 
 /** Moonbase's long-range listening watch, powered as part of Life Support. */
 export const COMMS_WATCH_MW = 0.4;
@@ -53,11 +84,17 @@ export function deptDemand(inst: Installation, d: DeptId): number {
 }
 
 export function workforce(inst: Installation): number {
-  return inst.isMoonBase ? 0.6 + 0.4 * (inst.population / 100) : 0.3 + 1.2 * (inst.population / 100);
+  const crew = onDuty(inst);
+  const base = inst.isMoonBase ? 0.6 + 0.4 * (crew / 100) : 0.3 + 1.2 * (crew / 100);
+  return base * (belowCap(inst) ? GROWTH_POLICIES[growthPolicy(inst)].crisisWork : 1);
 }
 
 export function lsNeed(inst: Installation): Record<'oxygen' | 'water' | 'nitrogen', number> {
-  const p = inst.population;
+  const pol = growthPolicy(inst);
+  // Grow's surcharge only while numbers are rising; Hold's rationing only below capacity.
+  const mult = pol === 'grow' ? (inst.population < growthLimit(inst) ? GROWTH_POLICIES.grow.lsMult : 1)
+    : pol === 'hold' ? (belowCap(inst) ? GROWTH_POLICIES.hold.lsMult : 1) : 1;
+  const p = inst.population * mult;
   return { oxygen: p * LS_PER_PERSON.oxygen, water: p * LS_PER_PERSON.water, nitrogen: p * LS_PER_PERSON.nitrogen };
 }
 
@@ -134,10 +171,10 @@ export function runInstallation(s: GameState, inst: Installation): void {
   } else {
     if (inst.shortageDays > 0) msg(s, 'good', `${inst.name}: life support restored`, 'Supplies and power are back to normal.', inst.id);
     inst.shortageDays = 0;
-    const cap = popCap(inst);
-    if (lsEff >= 0.95 && inst.population < cap) {
-      const rate = inst.isMoonBase ? 0.004 : 0.0025;
-      inst.population = Math.min(cap, inst.population + Math.max(0.05, inst.population * rate));
+    const limit = growthLimit(inst);
+    const rate = baseGrowthRate(inst) * GROWTH_POLICIES[growthPolicy(inst)].rate;
+    if (lsEff >= 0.95 && inst.population < limit && rate > 0) {
+      inst.population = Math.min(limit, inst.population + Math.max(0.05, inst.population * rate));
     }
   }
 
