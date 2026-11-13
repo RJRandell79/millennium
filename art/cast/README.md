@@ -5,7 +5,7 @@ Portraits of the story cast, for character screens, logs and department scenes. 
 | Character | File | Status |
 | --- | --- | --- |
 | Sana Mirza, flight lead | `sana-mirza.webp` | Final (Nov 2026) |
-| Amara Okafor-Lind, deputy commander | — | To do |
+| Amara Okafor-Lind, deputy commander | `amara-okafor-lind.webp` | Final (Nov 2026) |
 | Tomasz "Tam" Wójcik, chief engineer | — | To do |
 | Dr Ines Carvalho, chief medical officer | — | To do |
 | Callum Brierley, archivist | — | To do |
@@ -14,7 +14,7 @@ Portraits of the story cast, for character screens, logs and department scenes. 
 
 ## Reference look: `sana-mirza.webp`
 
-Sana's portrait is the reference for the whole set. Every later portrait should match its lighting, rendering and uniform design, with a completely different face.
+Sana's portrait is the reference for the whole set; Amara's (`amara-okafor-lind.webp`) shows the command version of the uniform on the command deck. Every later portrait should match its lighting, rendering and uniform design, with a completely different face.
 
 **Moonbase uniform**
 - Dark navy-black jacket with a high standing collar and front zip, worn fully zipped.
@@ -25,8 +25,11 @@ Sana's portrait is the reference for the whole set. Every later portrait should 
 - Belt with a plain bronze buckle.
 
 **Department markings** (the same uniform, with one badge and patch per department)
+- Command: three gold stripes on each epaulette for the deputy commander; a bronze badge above the name tape showing a crater rim with a rising sun (Shackleton's sunlit ridge); round navy sleeve patch with the same crater-and-sunrise emblem in silver.
 - Flight wing: gold pilot's wings above the name tape; round navy sleeve patch with a silver wing over a crescent moon.
 - Others to be set as each portrait is made, for example engineering, medical and archive.
+
+**To correct later: the sleeve patch.** Sana and Amara currently wear different sleeve patches. The intent is one shared Moonbase mission patch on every crew sleeve, with the department shown only by the chest badge. Pick the shared design, then edit both portraits to match.
 
 **Not Moonbase uniform:** Sefa and Orun are Martian. They wear their own dark robes (plain for Deep Watch, bronze-trimmed for the Assembly), not this uniform.
 
