@@ -75,6 +75,8 @@ export interface Installation {
   foundedDay: number;
   report: DayReport;
   shortageDays: number;
+  /** Moonbase only: the 0.4 MW long-range listening watch, drawn under Life Support. */
+  commsWatch?: boolean;
 }
 
 export type ShipType =
@@ -186,6 +188,21 @@ export interface EarthState { engines: number; progress: number; probed: boolean
 
 export interface GameSettings { varied: boolean; difficulty: 'relaxed' | 'standard' | 'hard' }
 
+/** A recovered document in the archive, with how the player has engaged with it (for playtests). */
+export interface ArchiveEntry {
+  id: string;
+  /** day it was recovered */
+  day: number;
+  /** day it was first opened */
+  firstReadDay?: number;
+  /** times opened */
+  opens: number;
+  /** true if the first opening interrupted a running clock */
+  firstReadWhileRunning?: boolean;
+  /** filed when an older save was upgraded, not found in play: left out of the reading stats */
+  backfilled?: boolean;
+}
+
 export interface GameStats { raidsRepelled: number; shipsBuilt: number; kgMined: number; peakPopulation: number; named: Partial<Record<ShipType, number>> }
 
 export interface GameState {
@@ -208,6 +225,7 @@ export interface GameState {
   flags: string[];
   messages: Message[];
   unread: number;
+  archive: ArchiveEntry[];
   outcome?: { result: 'won' | 'lost'; day: number; reason: string };
   stats: GameStats;
 }

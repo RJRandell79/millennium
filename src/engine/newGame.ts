@@ -7,7 +7,7 @@ import { clone, makeInstallation, msg, newId } from './util';
 import { runInstallation } from './economy';
 import { rand } from './rng';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export const DIFFICULTY = {
   relaxed: { firstRaid: 140, raidScale: 0.7, interval: 1.3 },
@@ -36,6 +36,7 @@ export function newGame(seed = Date.now() % 2147483647, settings: Partial<GameSe
     flags: [],
     messages: [],
     unread: 0,
+    archive: [],
     stats: { raidsRepelled: 0, shipsBuilt: 0, kgMined: 0, peakPopulation: 100, named: {} },
   };
   s.threat.nextLaunchDay = DIFFICULTY[s.settings.difficulty].firstRaid;
@@ -64,6 +65,7 @@ export function newGame(seed = Date.now() % 2147483647, settings: Partial<GameSe
 
   const mb = makeInstallation(s, 'moon', true, 100);
   mb.equipment = { ...mb.equipment, solar: 8, habitat: 1, fightersMk1: 4 };
+  mb.commsWatch = true;
   mb.stock = {
     ...emptyStock(),
     hydrogen: 20000, oxygen: 20000, water: 15000, nitrogen: 3000,

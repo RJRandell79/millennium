@@ -2,7 +2,7 @@ import type { Cost, DeptId, GameState, Installation, MaterialId } from './types'
 import { LS_MATS, LS_PER_PERSON, canAfford, pay } from './data/materials';
 import { BLUEPRINT_BY_ID } from './data/blueprints';
 import { RESEARCH_BY_ID } from './data/research';
-import { STORY } from './data/lore';
+import { STORY, FRAGMENTS } from './data/lore';
 import { sunDistance } from './orbits';
 import { msg, popCap, setFlag } from './util';
 import { addShip } from './newGame';
@@ -11,6 +11,9 @@ import { addShip } from './newGame';
 export const POWER_ORDER: DeptId[] = ['lifeSupport', 'defence', 'flightDeck', 'refinery', 'production', 'research'];
 
 export const MINE_BASE = 250; // kg/day per abundance point
+
+/** Moonbase's long-range listening watch, powered as part of Life Support. */
+export const COMMS_WATCH_MW = 0.4;
 
 export function deptHealth(inst: Installation, d: DeptId): number {
   const st = inst.depts[d];
@@ -39,7 +42,7 @@ export function deptDemand(inst: Installation, d: DeptId): number {
   if (!st || !st.online) return 0;
   const e = inst.equipment;
   switch (d) {
-    case 'lifeSupport': return 0.5 + 0.02 * inst.population;
+    case 'lifeSupport': return 0.5 + 0.02 * inst.population + (inst.commsWatch ? COMMS_WATCH_MW : 0);
     case 'defence': return 0.5 + 0.5 * e.lasers + 2 * e.shields;
     case 'flightDeck': return inst.isMoonBase ? 1 : 0.5;
     case 'refinery': return (inst.isMoonBase ? 4 : 2) + e.refinery;
@@ -176,8 +179,18 @@ function runResearch(s: GameState, inst: Installation, eff: number): void {
     r.current = undefined;
     r.progress = 0;
     msg(s, 'good', `Research complete: ${def.name}`, `Unlocked: ${def.unlocks}.`);
+    recoverFragments(s, 'research', def.id);
     if (def.id === 'signalAnalysis') { setFlag(s, 'intel'); msg(s, 'story', STORY.signalAnalysis.title, STORY.signalAnalysis.text); }
     if (def.id === 'mutationStudy') msg(s, 'story', STORY.mutationStudy.title, STORY.mutationStudy.text);
+  }
+}
+
+/** File any archive documents released by this trigger. Quiet: no message, no pause; the Archive tab shows a badge. */
+export function recoverFragments(s: GameState, kind: 'research', id: string, backfilled = false): void {
+  for (const f of FRAGMENTS) {
+    if (f.trigger.kind !== kind || f.trigger.id !== id) continue;
+    if (s.archive.some((e) => e.id === f.id)) continue;
+    s.archive.push(backfilled ? { id: f.id, day: s.day, opens: 0, backfilled: true } : { id: f.id, day: s.day, opens: 0 });
   }
 }
 

@@ -3,7 +3,7 @@ import { useGame } from '../../store/useGame';
 import {
   type DeptId, type GameState, type Installation, MATERIALS, DEPT_NAMES, BODY_BY_ID, LS_PER_PERSON,
   fmtKg, popCap, toggleDept, researchRate, productionRate, BLUEPRINT_BY_ID, RESEARCH_BY_ID, solarPerArray,
-  deptDemand, raidSize, formatDate, renameInstallation,
+  deptDemand, raidSize, formatDate, renameInstallation, toggleCommsWatch, COMMS_WATCH_MW,
 } from '../../engine';
 import { Bar, Section, Toggle, pct } from '../components/common';
 import { BaseScene } from '../components/BaseScene';
@@ -127,11 +127,34 @@ function Departments({ game, inst }: { game: GameState; inst: Installation }) {
               </div>
               <Bar value={st.online ? eff : 0} tone={tone} label={st.online ? pct(eff) : 'OFFLINE'} />
               <p className="dept-detail">{deptDetail(game, inst, d)}</p>
+              {d === 'lifeSupport' && inst.isMoonBase && <CommsWatch on={!!inst.commsWatch} />}
             </li>
           );
         })}
       </ul>
     </Section>
+  );
+}
+
+function CommsWatch({ on }: { on: boolean }) {
+  const act = useGame((s) => s.act);
+  const toggle = () => {
+    const before = useGame.getState().game!;
+    if (!act(toggleCommsWatch)) return;
+    const after = useGame.getState().game!;
+    // The deputy's one objection arrives as a story message: show it.
+    const objection = after.messages.find((m) => m.id > before.nextMsg && m.kind === 'story');
+    if (objection) useGame.setState({ modal: objection, speed: 'paused' });
+  };
+  return (
+    <div className="subload">
+      <div className="dept-top">
+        <span className="subload-name">Comms watch</span>
+        <span className="dept-meta">{on && <span className="muted small">{COMMS_WATCH_MW.toFixed(1)} MW</span>}</span>
+        <Toggle on={on} label="Comms watch power" onChange={toggle} />
+      </div>
+      <p className="dept-detail">Long-range listening watch on the search-and-rescue and deep-space navigation bands. Required by the lunar station safety code. Included in Life Support's draw.</p>
+    </div>
   );
 }
 
