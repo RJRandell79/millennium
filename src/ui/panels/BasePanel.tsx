@@ -5,7 +5,7 @@ import {
   fmtKg, popCap, toggleDept, researchRate, productionRate, BLUEPRINT_BY_ID, RESEARCH_BY_ID, solarPerArray,
   deptDemand, raidSize, formatDate, renameInstallation, toggleCommsWatch, COMMS_WATCH_MW,
   GROWTH_POLICIES, growthPolicy, lsNeed, baseGrowthRate, setGrowthPolicy, growthLimit, reserveOf, type GrowthPolicy,
-  terraformForecast, fmtRate,
+  terraformForecast, fmtRate, foundersOf, commissioningOf, commissionDaysLeft, COMMISSION_PER_DELIVERY, NITROGEN_SHORT_WORK,
 } from '../../engine';
 import { Bar, Section, Toggle, pct } from '../components/common';
 import { BaseScene } from '../components/BaseScene';
@@ -50,8 +50,40 @@ function Overview({ game, inst }: { game: GameState; inst: Installation }) {
         <Stat label="Supplies" value={r.daysOfSupplies >= 999 ? 'Self-sufficient' : `${Math.floor(r.daysOfSupplies)} days`} warn={r.daysOfSupplies < 30} />
         {!inst.isMoonBase && <Stat label="Freighters" value={freighters.length ? freighters.map((f) => f.name).join(', ') : 'None assigned'} warn={!freighters.length} />}
       </div>
+      {!inst.isMoonBase && <ColonyStatus inst={inst} />}
+      {inst.isMoonBase && r.nitrogenShort && <p className="warn-text small">Nitrogen short: work {Math.round((1 - NITROGEN_SHORT_WORK) * 100)}% slower and no growth until it arrives. No one dies of this.</p>}
       <GrowthControl inst={inst} />
     </section>
+  );
+}
+
+/** A colony's founding party, commissioning and nitrogen state: what keeps it alive and what limits it. */
+function ColonyStatus({ inst }: { inst: Installation }) {
+  const c = commissioningOf(inst);
+  const founders = foundersOf(inst);
+  const beyond = Math.max(0, Math.floor(inst.population) - founders);
+  return (
+    <div className="colony-status">
+      {c < 1 && (
+        <>
+          <Bar value={c * 100} max={100} tone="amber" label={`Commissioning ${Math.floor(c * 100)}%`} />
+          <p className="muted small">
+            Ore output and growth scale with commissioning. On its own the colony is fully running in about {commissionDaysLeft(inst)} days;
+            each freighter delivery adds {Math.round(COMMISSION_PER_DELIVERY * 100)}%. Life-support gases are extracted at the full rate from the start.
+          </p>
+        </>
+      )}
+      {founders > 0 && (
+        <p className="muted small">
+          Founding party: {Math.min(founders, Math.floor(inst.population))} sheltered from shortages and raids.
+          {beyond > 0 ? ` ${beyond} more beyond them ${beyond === 1 ? 'is' : 'are'} at risk.` : ''}
+          {' '}Buildings, equipment and stock are not protected.
+        </p>
+      )}
+      {inst.report.nitrogenShort && (
+        <p className="warn-text small">Nitrogen short: work {Math.round((1 - NITROGEN_SHORT_WORK) * 100)}% slower and no growth until it arrives. No one dies of this.</p>
+      )}
+    </div>
   );
 }
 
@@ -67,14 +99,18 @@ function GrowthControl({ inst }: { inst: Installation }) {
   const below = inst.population < cap;
   const growing = inst.population < limit && p.rate > 0;
   const stalled = growing && (inst.report.deptEff.lifeSupport ?? 0) < 0.95;
-  const perDay = growing ? Math.max(0.05, inst.population * baseGrowthRate(inst) * p.rate) : 0;
+  const noN2 = growing && !!inst.report.nitrogenShort;
+  const c = commissioningOf(inst);
+  const perDay = growing ? Math.max(0.05 * c, inst.population * baseGrowthRate(inst) * p.rate * c) : 0;
   const ls = current === 'grow' ? (growing ? 10 : 0) : current === 'hold' && below ? -10 : 0;
   const work = current === 'hold' && below ? 10 : 0;
   const reserve = Math.floor(reserveOf(inst));
   const reserveMax = Math.round(cap * (inst.isMoonBase ? p.reserve : 0));
   const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
   const now = stalled ? 'growth paused: life support is short'
-    : growing ? `about ${perDay.toFixed(1)} more people a day${below ? '' : ' into the reserve'}`
+    : noN2 ? 'growth paused: nitrogen is short'
+    : growing && c <= 0 ? 'no growth until the colony starts commissioning'
+    : growing ? `about ${perDay.toFixed(perDay < 0.1 ? 2 : 1)} more people a day${below ? '' : ' into the reserve'}${c < 1 ? ` (${Math.floor(c * 100)}% commissioned)` : ''}`
     : !below && current === 'hold' && reserve > 0 ? `no growth; ${reserve} from the reserve on duty`
     : !below ? (inst.isMoonBase && current !== 'hold' ? 'reserve full' : 'at capacity, no growth')
     : 'no growth';

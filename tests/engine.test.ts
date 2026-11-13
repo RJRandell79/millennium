@@ -6,6 +6,10 @@ import {
   setGrowthPolicy, lsNeed, workforce, popCap, growthLimit, reserveOf, terraformForecast, fmtRate, BLUEPRINT_BY_ID,
 } from '../src/engine';
 import { playBot } from './bot';
+import { addShip } from '../src/engine/newGame';
+import { resolveRaid } from '../src/engine/threat';
+import { makeInstallation } from '../src/engine/util';
+import { workforce as workforceOf, commissioningOf, miningRates, COMMISSION_PER_DELIVERY } from '../src/engine/economy';
 
 describe('orbits', () => {
   it('places planets at their real distances', () => {
@@ -296,6 +300,105 @@ describe('terraforming readability', () => {
     s.queue.forEach((q) => { q.started = true; }); // paid, so stock stays affordable for the check
     s = advanceDay(s).state;
     expect(s.messages.some((m) => m.title === 'Materials for another Terraforming Engine')).toBe(false);
+  });
+});
+
+describe('raids', () => {
+  function raidOn(lsDamage: number, seed: number) {
+    const s = newGame(seed);
+    const col = makeInstallation(s, 'ceres', false, 200);
+    s.installations[col.id] = col;
+    col.depts.lifeSupport!.damage = lsDamage;
+    return resolveRaid(s, { id: 'r', ships: 40, quality: 1.5, targetInstallationId: col.id, targetBodyId: 'ceres', launchDay: 0, arriveDay: 0 })!;
+  }
+
+  it('bombarding an already wrecked life-support plant kills no one directly', () => {
+    for (let seed = 1; seed <= 20; seed++) expect(raidOn(100, seed).casualties).toBe(0);
+  });
+
+  it('bombarding a working plant still causes casualties', () => {
+    const total = Array.from({ length: 20 }, (_, i) => raidOn(0, i + 1).casualties).reduce((a, b) => a + b, 0);
+    expect(total).toBeGreaterThan(0);
+  });
+});
+
+describe('colony survival', () => {
+  /** A powered colony on Ceres with the given people and life-support stock. */
+  function colony(pop: number, stock: { oxygen?: number; water?: number; nitrogen?: number }, opts: { founders?: number; commissioning?: number } = {}) {
+    const s = newGame(7);
+    const col = makeInstallation(s, 'ceres', false, pop);
+    col.equipment.reactor = 1;
+    if (opts.founders !== undefined) col.founders = opts.founders;
+    if (opts.commissioning !== undefined) col.commissioning = opts.commissioning;
+    col.stock.oxygen = stock.oxygen ?? 0; col.stock.water = stock.water ?? 0; col.stock.nitrogen = stock.nitrogen ?? 0;
+    s.installations[col.id] = col;
+    s.bodies.ceres.installationId = col.id;
+    // Ceres has local water; take it away so these tests control supply.
+    s.bodies.ceres.composition = { iron: 0.3, silica: 0.2 } as typeof s.bodies.ceres.composition;
+    return { s, id: col.id };
+  }
+  const run = (s: GameState, days: number) => { for (let i = 0; i < days; i++) s = advanceDay(s).state; return s; };
+
+  it('the founding party survives running out of oxygen and water', () => {
+    const { s, id } = colony(50, {}, { founders: 50 });
+    const after = run(s, 90);
+    expect(after.installations[id]).toBeDefined();
+    expect(after.installations[id].population).toBe(50);
+  });
+
+  it('people beyond the founders can still die of shortages, down to the founders', () => {
+    const { s, id } = colony(90, {}, { founders: 50 });
+    const after = run(s, 90);
+    expect(after.installations[id].population).toBe(50);
+    expect(after.messages.some((m) => m.title.endsWith('down to the founding party'))).toBe(true);
+  });
+
+  it('older saves treat a colony as having 50 founders and as fully commissioned', () => {
+    const { s, id } = colony(80, {});
+    expect(s.installations[id].founders).toBeUndefined();
+    expect(commissioningOf(s.installations[id])).toBe(1);
+    expect(run(s, 90).installations[id].population).toBe(50);
+  });
+
+  it('raids cannot kill the founding party', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const s = newGame(seed);
+      const col = makeInstallation(s, 'ceres', false, 60);
+      col.founders = 50;
+      s.installations[col.id] = col;
+      const r = resolveRaid(s, { id: 'r', ships: 60, quality: 2, targetInstallationId: col.id, targetBodyId: 'ceres', launchDay: 0, arriveDay: 0 })!;
+      expect(r.casualties).toBeLessThanOrEqual(10);
+      expect(s.installations[col.id].population).toBeGreaterThanOrEqual(50);
+    }
+  });
+
+  it('a nitrogen shortage slows work and stops growth but kills no one', () => {
+    const { s, id } = colony(80, { oxygen: 1e6, water: 1e6, nitrogen: 0 }, { founders: 50 });
+    const before = workforceOf(s.installations[id]);
+    const after = run(s, 60);
+    const col = after.installations[id];
+    expect(col.population).toBe(80);
+    expect(col.report.nitrogenShort).toBe(true);
+    expect(col.report.lifeSupportOk).toBe(true);
+    expect(workforceOf(col)).toBeLessThan(before);
+    expect(after.messages.filter((m) => m.title.endsWith('nitrogen short')).length).toBe(1);
+  });
+
+  it('a new colony commissions itself slowly, and a delivery speeds it up', () => {
+    const { s, id } = colony(50, { oxygen: 1e6, water: 1e6, nitrogen: 1e6 }, { founders: 50, commissioning: 0 });
+    const after = run(s, 30);
+    const c = commissioningOf(after.installations[id]);
+    expect(c).toBeCloseTo(30 / 150, 5);
+    // Ore output scales with commissioning; nothing grows before it starts.
+    const full = miningRates(after, { ...after.installations[id], commissioning: 1 }, 1);
+    const now = miningRates(after, after.installations[id], 1);
+    expect(now.iron!).toBeCloseTo(full.iron! * c, 6);
+    // A freighter arriving with supplies adds a chunk.
+    const f = addShip(after, 'freighter', 'moon');
+    f.status = 'transit'; f.at = 'moon';
+    f.transit = { from: 'moon', to: 'ceres', departDay: after.day - 10, arriveDay: after.day + 1, purpose: 'haulOut' };
+    const next = advanceDay(after).state;
+    expect(commissioningOf(next.installations[id])).toBeCloseTo(c + 1 / 150 + COMMISSION_PER_DELIVERY, 5);
   });
 });
 

@@ -298,3 +298,6 @@ select, input[type='text'], input:not([type]), input[inputmode] { background: #0
 /* Population policy */
 .growth { padding: 8px 12px 4px; border-top: 1px solid var(--hi); }
 .growth .segmented { padding: 6px 0; }
+
+.colony-status { padding: 0 12px 4px; }
+.colony-status .bar { margin: 6px 0 2px; }

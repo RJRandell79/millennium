@@ -5,6 +5,7 @@ import { DIFFICULTY } from './newGame';
 import { returnHome } from './fleet';
 import { makeInstallation, moonbase, msg, newId, setFlag } from './util';
 import { chance, pick, rand } from './rng';
+import { shelteredOf } from './economy';
 
 export function raidSize(s: GameState, wave: number): { ships: number; quality: number } {
   const d = DIFFICULTY[s.settings.difficulty];
@@ -100,6 +101,7 @@ export function resolveRaid(s: GameState, raid: Raid): BattleReport | null {
   // 3. Survivors bombard the installation.
   const damage: { dept: DeptId; amount: number }[] = [];
   let casualties = 0;
+  let sheltered = false;
   if (raiders > 0) {
     const shield = 1 - 0.25 * Math.min(3, inst.equipment.shields) * (defEff > 0.5 ? 1 : 0.5);
     let pts = raiders * q * 7 * shield;
@@ -113,9 +115,13 @@ export function resolveRaid(s: GameState, raid: Raid): BattleReport | null {
       st.damage += real;
       const existing = damage.find((x) => x.dept === d);
       if (existing) existing.amount += real; else damage.push({ dept: d, amount: real });
-      if (d === 'lifeSupport') casualties += inst.population * (chunk / 300);
+      // Casualties follow the damage actually done: hitting a plant that is already wrecked kills no one directly.
+      if (d === 'lifeSupport') casualties += inst.population * (real / 300);
     }
-    casualties = Math.min(inst.population, Math.round(casualties));
+    // The founding party shelters and can't be killed; anyone beyond them can.
+    const exposed = Math.max(0, inst.population - shelteredOf(inst));
+    sheltered = Math.round(casualties) > exposed && shelteredOf(inst) > 0;
+    casualties = Math.min(exposed, Math.round(casualties));
     inst.population -= casualties;
     log.push(`${raiders} ${ADVERSARY.raiderName}s broke through and bombarded ${inst.name}.`);
   } else {
@@ -132,7 +138,8 @@ export function resolveRaid(s: GameState, raid: Raid): BattleReport | null {
 
   const summary = `${destroyed}/${raid.ships} destroyed (lasers ${laserKills}, fighters ${fighterKills}). Fighters lost: ${fightersLost}.` +
     (damage.length ? ` Damage to ${damage.map((d) => `${DEPT_NAMES[d.dept]} ${Math.round(d.amount)}%`).join(', ')}.` : '') +
-    (casualties ? ` ${casualties} killed.` : '');
+    (casualties ? ` ${casualties} killed.` : '') +
+    (sheltered ? ` The founding party of ${shelteredOf(inst)} sheltered and survived.` : '');
   msg(s, outcome === 'repelled' ? 'good' : 'alert', `Raid on ${inst.name}: ${outcome}`, summary, inst.id);
 
   if (destroyed > 0 && setFlag(s, 'firstContact')) msg(s, 'story', STORY.firstContact.title, STORY.firstContact.text);
