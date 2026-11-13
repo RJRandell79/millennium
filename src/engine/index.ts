@@ -6,7 +6,7 @@ export * from './selectors';
 export * from './orbits';
 export * from './economy';
 export * from './save';
-export { colonyRequirementMet, fuelFor, SURVEY_DAYS, MINING_RATE } from './fleet';
+export { colonyRequirementMet, fuelFor, shipCapacity, fuelPerAU, BULK_FREIGHT_CAPACITY, BULK_FREIGHT_FUEL, SURVEY_DAYS, MINING_RATE } from './fleet';
 export { raidSize, DEPT_NAMES, BATTLECRUISER_POWER } from './threat';
 export { fmtKg, popCap, moonbase } from './util';
 export * from './data/materials';

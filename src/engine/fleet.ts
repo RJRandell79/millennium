@@ -1,4 +1,4 @@
-import type { GameState, Installation, MaterialId, Purpose, Ship } from './types';
+import type { GameState, Installation, MaterialId, Purpose, Ship, ShipType } from './types';
 import { BODY_BY_ID, MOONS_OF } from './data/bodies';
 import { HAUL_PRIORITY, LS_MATS, MATERIAL_IDS, emptyStock, stockTotal } from './data/materials';
 import { BLUEPRINT_BY_ID, SHIP_SPECS } from './data/blueprints';
@@ -14,9 +14,25 @@ export const MINING_RATE = 2500; // kg/day for miners & scoops
 /** Does a loop (there and back) for this purpose get paid up front? */
 const ROUND_TRIP: Purpose[] = ['survey', 'mine', 'haulOut', 'assault', 'accord'];
 
+/** Bulk Freight Holds: every freighter carries more, and burns more hydrogen doing it. */
+export const BULK_FREIGHT_CAPACITY = 200000;
+export const BULK_FREIGHT_FUEL = 1.5;
+
+const hasBulk = (s: GameState, type: ShipType) => type === 'freighter' && s.research.done.includes('bulkFreight');
+
+/** Cargo capacity of a ship type in kg, after research. */
+export function shipCapacity(s: GameState, type: ShipType): number {
+  return hasBulk(s, type) ? BULK_FREIGHT_CAPACITY : SHIP_SPECS[type].capacity;
+}
+
+/** Hydrogen per AU for a ship type, after research. */
+export function fuelPerAU(s: GameState, type: ShipType): number {
+  return SHIP_SPECS[type].fuelPerAU * (hasBulk(s, type) ? BULK_FREIGHT_FUEL : 1);
+}
+
 export function fuelFor(s: GameState, ship: Ship, to: string, purpose: Purpose): number {
   const d = legDistance(ship.at, to, s.day);
-  return Math.ceil(d * SHIP_SPECS[ship.type].fuelPerAU * (ROUND_TRIP.includes(purpose) ? 2 : 1));
+  return Math.ceil(d * fuelPerAU(s, ship.type) * (ROUND_TRIP.includes(purpose) ? 2 : 1));
 }
 
 /** Low-level launch. Pays fuel only when departing Moonbase. Returns false if fuel is short. */
@@ -64,7 +80,7 @@ export function loadOutbound(s: GameState, ship: Ship, col: Installation): void 
   const mine = s.consignments.filter((c) => c.installationId === col.id);
   ship.consignments.push(...mine);
   s.consignments = s.consignments.filter((c) => c.installationId !== col.id);
-  const cap = SHIP_SPECS.freighter.capacity;
+  const cap = shipCapacity(s, 'freighter');
   const need = lsNeed(col);
   const mbNeed = lsNeed(mb);
   for (const m of LS_MATS) {
@@ -97,7 +113,7 @@ function exchangeAtColony(s: GameState, ship: Ship, col: Installation): void {
     msg(s, 'good', `${bp.name} delivered`, `${ship.name} installed a ${bp.name} at ${col.name}.`, col.id);
   }
   ship.consignments = [];
-  const cap = SHIP_SPECS.freighter.capacity;
+  const cap = shipCapacity(s, 'freighter');
   const need = lsNeed(col);
   for (const m of HAUL_PRIORITY) {
     const room = cap - stockTotal(ship.cargo);
@@ -228,7 +244,7 @@ function work(s: GameState, ship: Ship): void {
   if (ship.type === 'miner' || ship.type === 'gasScoop') {
     const comp = s.bodies[ship.at].composition;
     const total = Object.values(comp).reduce((a, b) => a + (b ?? 0), 0) || 1;
-    const room = SHIP_SPECS[ship.type].capacity - stockTotal(ship.cargo);
+    const room = shipCapacity(s, ship.type) - stockTotal(ship.cargo);
     const amount = Math.min(room, MINING_RATE * (0.9 + rand(s) * 0.2));
     for (const [k, v] of Object.entries(comp)) ship.cargo[k as MaterialId] += (amount * (v ?? 0)) / total;
     s.stats.kgMined += amount;
@@ -237,7 +253,7 @@ function work(s: GameState, ship: Ship): void {
       ship.cargo.copper += 2500;
       msg(s, 'good', 'Derelict found', `${ship.name} found a pre-impact mining drone in a stable orbit and stripped it: +1,500 kg platinum, +2,500 kg copper.`, ship.id);
     }
-    if (stockTotal(ship.cargo) >= SHIP_SPECS[ship.type].capacity - 1) returnHome(s, ship);
+    if (stockTotal(ship.cargo) >= shipCapacity(s, ship.type) - 1) returnHome(s, ship);
   }
 }
 
