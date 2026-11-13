@@ -118,6 +118,8 @@ export interface Ship {
   workDaysLeft: number;
   /** freighter: colony installation id it loops to. miner/scoop: body id it loops to. */
   routeTo?: string;
+  /** freighter: body a colony ship is on its way to; becomes routeTo when the colony is founded */
+  routeBody?: string;
   autoLoop: boolean;
   consignments: Consignment[];
   fleetId?: string;   // assault fleets
@@ -201,6 +203,19 @@ export interface EarthState {
   fed?: number;
   /** feed materials that ran short on the last day */
   short?: ('nitrogen' | 'water' | 'oxygen')[];
+  /** who gets Moonbase's oxygen, water and nitrogen first. Absent means 'surplus'. */
+  feedPolicy?: FeedPolicy;
+}
+
+/** surplus: engines take only what's left after colony commitments and Moonbase's reserve. engines: engines first. */
+export type FeedPolicy = 'surplus' | 'engines';
+
+/** A colony's supply route, shared by every freighter on it. */
+export interface RouteState {
+  /** day the last freighter on this route left Moonbase; the next slot is this plus the route's interval */
+  lastDeparture?: number;
+  /** material to bring home first, when Moonbase needs it */
+  prefer?: MaterialId;
 }
 
 export interface GameSettings { varied: boolean; difficulty: 'relaxed' | 'standard' | 'hard' }
@@ -237,6 +252,8 @@ export interface GameState {
   ships: Record<string, Ship>;
   queue: QueueItem[];
   consignments: Consignment[];
+  /** supply routes by colony installation id. Absent in older saves. */
+  routes?: Record<string, RouteState>;
   research: ResearchState;
   threat: ThreatState;
   earth: EarthState;

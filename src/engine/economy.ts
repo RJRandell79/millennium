@@ -7,6 +7,10 @@ import { sunDistance } from './orbits';
 import { msg, popCap, setFlag } from './util';
 import { addShip } from './newGame';
 
+/** Terraforming engines: daily feed per engine from Moonbase stock, and % restored per engine per day when fully fed. */
+export const TERRAFORM_FEED = { nitrogen: 400, water: 800, oxygen: 200 } as const;
+export const TERRAFORM_RATE = 0.2;
+
 /** Power allocation order: the first departments get power first. */
 export const POWER_ORDER: DeptId[] = ['lifeSupport', 'defence', 'flightDeck', 'refinery', 'production', 'research'];
 

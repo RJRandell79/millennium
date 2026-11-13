@@ -3,7 +3,7 @@ import { useGame, type FleetStatusFilter } from '../../store/useGame';
 import {
   type GameState, type Ship, type ShipType, BODY_BY_ID, SHIP_SPECS, MATERIAL_IDS, MATERIAL_BY_ID, BLUEPRINT_BY_ID,
   missionsFor, sendShip, setFreighterRoute, recallShip, launchAssault, formatDate, fmtKg, stockTotal, fuelFor,
-  shipCapacity,
+  shipCapacity, colonyShipTo, nextSlot, departureToArriveAfter,
 } from '../../engine';
 import { Bar, Empty, Section } from '../components/common';
 
@@ -146,12 +146,25 @@ function ShipCard({ game, ship }: { game: GameState; ship: Ship }) {
   const spec = SHIP_SPECS[ship.type];
   const t = ship.transit;
   const colonies = Object.values(game.installations).filter((i) => !i.isMoonBase);
-  const routeName = ship.routeTo ? (game.installations[ship.routeTo]?.name ?? BODY_BY_ID[ship.routeTo]?.name) : null;
+  // Worlds a colony ship is heading for can take a freighter before the colony exists.
+  const pending = Object.values(game.ships)
+    .filter((sh) => sh.type === 'colonyShip' && sh.status === 'transit' && sh.transit?.purpose === 'colonise' && !game.bodies[sh.transit.to].installationId)
+    .map((sh) => ({ bodyId: sh.transit!.to, land: sh.transit!.arriveDay }));
+  const routeName = ship.routeBody ? `${BODY_BY_ID[ship.routeBody].name} (colony ship on its way)`
+    : ship.routeTo ? (game.installations[ship.routeTo]?.name ?? BODY_BY_ID[ship.routeTo]?.name) : null;
   const options = ship.status === 'docked' ? missionsFor(game, ship) : [];
   const total = stockTotal(ship.cargo);
 
   let status = '';
-  if (ship.status === 'docked') status = `Docked at ${BODY_BY_ID[ship.at].name}`;
+  if (ship.status === 'docked') {
+    status = `Docked at ${BODY_BY_ID[ship.at].name}`;
+    if (ship.type === 'freighter' && ship.at === 'moon' && ship.autoLoop) {
+      const col = ship.routeTo ? game.installations[ship.routeTo] : undefined;
+      if (col && nextSlot(game, col) > game.day) status += ` · next slot on the route ${formatDate(nextSlot(game, col))}`;
+      const cs = ship.routeBody ? colonyShipTo(game, ship.routeBody) : undefined;
+      if (cs) status += ` · leaves ${formatDate(departureToArriveAfter(game, ship.routeBody!, game.day, cs.transit!.arriveDay + 1))} to arrive just after the landing`;
+    }
+  }
   else if (ship.status === 'working') {
     status = ship.type === 'surveyor' ? `Surveying ${BODY_BY_ID[ship.at].name} — ${ship.workDaysLeft} days left`
       : ship.type === 'miner' || ship.type === 'gasScoop' ? `Mining ${BODY_BY_ID[ship.at].name}` : `At ${BODY_BY_ID[ship.at].name}`;
@@ -175,9 +188,10 @@ function ShipCard({ game, ship }: { game: GameState; ship: Ship }) {
 
       <div className="ship-actions">
         {ship.type === 'freighter' && (
-          <select value={ship.routeTo ?? ''} onChange={(e) => act((s) => setFreighterRoute(s, ship.id, e.target.value || undefined), e.target.value ? `${ship.name} assigned` : undefined)}>
-            <option value="">{colonies.length ? 'Assign to colony…' : 'No colonies yet'}</option>
+          <select value={ship.routeTo ?? ship.routeBody ?? ''} onChange={(e) => act((s) => setFreighterRoute(s, ship.id, e.target.value || undefined), e.target.value ? `${ship.name} assigned` : undefined)}>
+            <option value="">{colonies.length || pending.length ? 'Assign to colony…' : 'No colonies yet'}</option>
             {colonies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {pending.map((p) => <option key={p.bodyId} value={p.bodyId}>{BODY_BY_ID[p.bodyId].name} (colony ship lands {formatDate(p.land)})</option>)}
           </select>
         )}
         {ship.status === 'docked' && ship.at === 'moon' && options.length > 0 && (

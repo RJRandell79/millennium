@@ -6,6 +6,7 @@ import {
   deptDemand, raidSize, formatDate, renameInstallation, toggleCommsWatch, COMMS_WATCH_MW,
   GROWTH_POLICIES, growthPolicy, lsNeed, baseGrowthRate, setGrowthPolicy, growthLimit, reserveOf, type GrowthPolicy,
   terraformForecast, fmtRate, foundersOf, commissioningOf, commissionDaysLeft, COMMISSION_PER_DELIVERY, NITROGEN_SHORT_WORK,
+  supplyForecast, setRoutePreference, MATERIAL_BY_ID, type MaterialId,
 } from '../../engine';
 import { Bar, Section, Toggle, pct } from '../components/common';
 import { BaseScene } from '../components/BaseScene';
@@ -51,6 +52,7 @@ function Overview({ game, inst }: { game: GameState; inst: Installation }) {
         {!inst.isMoonBase && <Stat label="Freighters" value={freighters.length ? freighters.map((f) => f.name).join(', ') : 'None assigned'} warn={!freighters.length} />}
       </div>
       {!inst.isMoonBase && <ColonyStatus inst={inst} />}
+      {!inst.isMoonBase && <SupplyRoute game={game} inst={inst} />}
       {inst.isMoonBase && r.nitrogenShort && <p className="warn-text small">Nitrogen short: work {Math.round((1 - NITROGEN_SHORT_WORK) * 100)}% slower and no growth until it arrives. No one dies of this.</p>}
       <GrowthControl inst={inst} />
     </section>
@@ -82,6 +84,66 @@ function ColonyStatus({ inst }: { inst: Installation }) {
       )}
       {inst.report.nitrogenShort && (
         <p className="warn-text small">Nitrogen short: work {Math.round((1 - NITROGEN_SHORT_WORK) * 100)}% slower and no growth until it arrives. No one dies of this.</p>
+      )}
+    </div>
+  );
+}
+
+const LS_NAME: Record<'oxygen' | 'water' | 'nitrogen', string> = { oxygen: 'Oxygen', water: 'Water', nitrogen: 'Nitrogen' };
+
+/** The colony's supply route: who serves it, when they arrive, whether the store lasts, and what gets home. */
+function SupplyRoute({ game, inst }: { game: GameState; inst: Installation }) {
+  const act = useGame((s) => s.act);
+  const f = supplyForecast(game, inst);
+  const prefer = game.routes?.[inst.id]?.prefer;
+  const mined = Object.keys(BODY_BY_ID[inst.bodyId].composition) as MaterialId[];
+  const inDays = (d: number) => (d <= game.day ? 'today' : d === game.day + 1 ? 'tomorrow' : `in ${d - game.day} days`);
+  const short = f.lines.filter((l) => l.perDay > 0);
+  const piling = f.freighters > 0 && f.producedPerDay > f.homePerDay * 1.2;
+  return (
+    <div className="growth supply">
+      <span className="stat-label">Supply route</span>
+      {f.freighters === 0 ? (
+        <p className="warn-text small">No freighter assigned. Assign one in Fleet to keep the colony supplied and bring its ore home.</p>
+      ) : (
+        <>
+          <p className="dept-detail">
+            {f.freighters} freighter{f.freighters > 1 ? 's' : ''} · round trip about {f.roundTrip} days at today's distance
+            {f.freighters > 1 ? ` · a departure every ${f.interval} days` : ''}.
+          </p>
+          <ul className="plain small">
+            {f.arrivals.slice(0, 3).map((a) => (
+              <li key={a.shipId}>{a.shipName} arrives {formatDate(a.arriveDay)} ({inDays(a.arriveDay)}){a.carrying ? ', supplies aboard' : ''}</li>
+            ))}
+          </ul>
+        </>
+      )}
+      {short.map((l) => {
+        const out = l.runsOutDay;
+        const next = f.arrivals[0]?.arriveDay;
+        const gap = out !== null && (next === undefined || out < next);
+        return (
+          <p key={l.mat} className={gap ? 'warn-text small' : 'muted small'}>
+            {LS_NAME[l.mat]}: needs {fmtKg(l.perDay)} kg a day from outside · store lasts to {out !== null ? formatDate(out) : '—'}
+            {gap ? (next !== undefined ? `, ${next - out!} days before the next delivery` : ', with no delivery scheduled') : ''}
+            {l.inFlight > 1 ? ` · ${fmtKg(l.inFlight)} kg on its way` : ''}.
+          </p>
+        );
+      })}
+      {f.freighters > 0 && (
+        <p className={piling ? 'warn-text small' : 'muted small'}>
+          Mines about {f.producedPerDay.toFixed(1)} t a day; its freighters can bring home about {f.homePerDay.toFixed(1)} t a day.
+          {piling ? ' Output is piling up faster than it can be shipped: another freighter would help.' : ''}
+        </p>
+      )}
+      {f.freighters > 0 && (
+        <label className="small pref">
+          Bring home first:{' '}
+          <select value={prefer ?? ''} onChange={(e) => act((s) => setRoutePreference(s, inst.id, (e.target.value || undefined) as MaterialId | undefined))}>
+            <option value="">Automatic (what Moonbase is short of)</option>
+            {mined.map((m) => <option key={m} value={m}>{MATERIAL_BY_ID[m].name}, when Moonbase needs it</option>)}
+          </select>
+        </label>
       )}
     </div>
   );

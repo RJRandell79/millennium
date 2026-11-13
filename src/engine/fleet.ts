@@ -1,10 +1,14 @@
-import type { GameState, Installation, MaterialId, Purpose, Ship, ShipType } from './types';
+import type { GameState, Installation, MaterialId, Purpose, Ship } from './types';
 import { BODY_BY_ID, MOONS_OF } from './data/bodies';
-import { HAUL_PRIORITY, LS_MATS, MATERIAL_IDS, emptyStock, stockTotal } from './data/materials';
-import { BLUEPRINT_BY_ID, SHIP_SPECS } from './data/blueprints';
+import { LS_MATS, MATERIAL_IDS, emptyStock, stockTotal } from './data/materials';
+import { BLUEPRINT_BY_ID } from './data/blueprints';
 import { STORY } from './data/lore';
 import { driveSpeed, legDistance, travelDays } from './orbits';
 import { COMMISSION_PER_DAY, COMMISSION_PER_DELIVERY, commissioningOf, lsNeed, solarPerArray } from './economy';
+import {
+  MOONBASE_RESERVE_DAYS, colonyShipTo, departureToArriveAfter, foundingColony, fuelPerAU, homeboundLoad, legDays,
+  nextSlot, plannedLoad, routeFreighters, routeInterval, shipCapacity,
+} from './logistics';
 import { makeInstallation, moonbase, msg, setFlag } from './util';
 import { chance, rand } from './rng';
 
@@ -13,22 +17,6 @@ export const MINING_RATE = 2500; // kg/day for miners & scoops
 
 /** Does a loop (there and back) for this purpose get paid up front? */
 const ROUND_TRIP: Purpose[] = ['survey', 'mine', 'haulOut', 'assault', 'accord'];
-
-/** Bulk Freight Holds: every freighter carries more, and burns more hydrogen doing it. */
-export const BULK_FREIGHT_CAPACITY = 200000;
-export const BULK_FREIGHT_FUEL = 1.5;
-
-const hasBulk = (s: GameState, type: ShipType) => type === 'freighter' && s.research.done.includes('bulkFreight');
-
-/** Cargo capacity of a ship type in kg, after research. */
-export function shipCapacity(s: GameState, type: ShipType): number {
-  return hasBulk(s, type) ? BULK_FREIGHT_CAPACITY : SHIP_SPECS[type].capacity;
-}
-
-/** Hydrogen per AU for a ship type, after research. */
-export function fuelPerAU(s: GameState, type: ShipType): number {
-  return SHIP_SPECS[type].fuelPerAU * (hasBulk(s, type) ? BULK_FREIGHT_FUEL : 1);
-}
 
 export function fuelFor(s: GameState, ship: Ship, to: string, purpose: Purpose): number {
   const d = legDistance(ship.at, to, s.day);
@@ -75,23 +63,20 @@ export function colonyRequirementMet(s: GameState, bodyId: string): { ok: boolea
 }
 
 /** Load a freighter at Moonbase for its colony: crated equipment + life-support top-up. */
-export function loadOutbound(s: GameState, ship: Ship, col: Installation): void {
+export function loadOutbound(s: GameState, ship: Ship, col: Installation, arrivalDay: number, interval: number): void {
   const mb = moonbase(s);
   const mine = s.consignments.filter((c) => c.installationId === col.id);
   ship.consignments.push(...mine);
   s.consignments = s.consignments.filter((c) => c.installationId !== col.id);
   const cap = shipCapacity(s, 'freighter');
-  const need = lsNeed(col);
   const mbNeed = lsNeed(mb);
+  // Sized to last the colony until the delivery after this one, counting its store and cargo already in flight.
+  const plan = plannedLoad(s, col, arrivalDay, interval);
   for (const m of LS_MATS) {
     const k = m as 'oxygen' | 'water' | 'nitrogen';
-    const minedThere = col.report.mined[m] ?? 0;
-    const deficitPerDay = Math.max(0, need[k] * 1.1 - minedThere);
-    if (deficitPerDay <= 0) continue;
-    const want = deficitPerDay * 150 - col.stock[m];
-    const spare = mb.stock[m] - mbNeed[k] * 60;
+    const spare = mb.stock[m] - mbNeed[k] * MOONBASE_RESERVE_DAYS;
     const room = cap - stockTotal(ship.cargo);
-    const amt = Math.max(0, Math.min(want, spare, room));
+    const amt = Math.max(0, Math.min(plan[k], spare, room));
     if (amt > 0) { mb.stock[m] -= amt; ship.cargo[m] += amt; }
   }
 }
@@ -113,14 +98,13 @@ function exchangeAtColony(s: GameState, ship: Ship, col: Installation): void {
     msg(s, 'good', `${bp.name} delivered`, `${ship.name} installed a ${bp.name} at ${col.name}.`, col.id);
   }
   ship.consignments = [];
-  const cap = shipCapacity(s, 'freighter');
-  const need = lsNeed(col);
-  for (const m of HAUL_PRIORITY) {
-    const room = cap - stockTotal(ship.cargo);
-    if (room <= 0) break;
-    const keep = (LS_MATS as MaterialId[]).includes(m) ? need[m as 'oxygen'] * 120 : 0;
-    const amt = Math.max(0, Math.min(col.stock[m] - keep, room));
-    if (amt > 0) { col.stock[m] -= amt; ship.cargo[m] += amt; }
+  // Homebound: what Moonbase is short of first, never what the colony needs to last until its next delivery.
+  const interval = routeInterval(s, col.bodyId, routeFreighters(s, col).length);
+  const load = homeboundLoad(s, col, shipCapacity(s, 'freighter'), interval);
+  for (const [m, amt] of Object.entries(load)) {
+    if (!amt) continue;
+    col.stock[m as MaterialId] -= amt;
+    ship.cargo[m as MaterialId] += amt;
   }
 }
 
@@ -195,7 +179,12 @@ function arrive(s: GameState, ship: Ship, purpose: Purpose): void {
       else col.equipment.solar = Math.min(24, Math.ceil(6 / perArray));
       for (const id of MATERIAL_IDS) col.stock[id] += ship.cargo[id];
       if (s.bodies[ship.at].knowledge < 2) s.bodies[ship.at].knowledge = 2;
-      msg(s, 'good', `${col.name} founded`, `${ship.colonists} colonists have landed on ${body.name}. The founding party is sheltered from shortages and raids. The colony will get itself running slowly on its own (about ${Math.ceil(1 / COMMISSION_PER_DAY)} days); each freighter delivery speeds that up. Assign a freighter to keep it supplied and bring its ore home.`, col.id);
+      const waiting = Object.values(s.ships).filter((sh) => sh.routeBody === ship.at);
+      for (const sh of waiting) { sh.routeTo = col.id; sh.routeBody = undefined; }
+      const supply = waiting.length
+        ? ` ${waiting.length === 1 ? `${waiting[0].name} is` : `${waiting.length} freighters are`} already assigned to keep it supplied.`
+        : ' Assign a freighter to keep it supplied and bring its ore home.';
+      msg(s, 'good', `${col.name} founded`, `${ship.colonists} colonists have landed on ${body.name}. The founding party is sheltered from shortages and raids. The colony will get itself running slowly on its own (about ${Math.ceil(1 / COMMISSION_PER_DAY)} days); each freighter delivery speeds that up.${supply}`, col.id);
       destroyShip(s, ship);
       return;
     }
@@ -208,7 +197,10 @@ function arrive(s: GameState, ship: Ship, purpose: Purpose): void {
       const instId = s.bodies[ship.at].installationId;
       const col = instId ? s.installations[instId] : undefined;
       if (col) exchangeAtColony(s, ship, col);
-      else msg(s, 'warn', `${ship.name}: colony gone`, `There is no colony on ${body.name} any more. Returning with cargo.`);
+      else {
+        ship.routeBody = undefined;
+        msg(s, 'warn', `${ship.name}: no colony`, `There is no colony on ${body.name}. Returning with cargo.`);
+      }
       returnHome(s, ship);
       return;
     }
@@ -260,35 +252,70 @@ function work(s: GameState, ship: Ship): void {
 /** Ships docked at Moonbase with a standing route launch again automatically. */
 function dispatchLoops(s: GameState): void {
   for (const ship of Object.values(s.ships)) {
-    if (ship.status !== 'docked' || ship.at !== 'moon' || !ship.routeTo || !ship.autoLoop) continue;
+    if (ship.status !== 'docked' || ship.at !== 'moon' || !(ship.routeTo || ship.routeBody) || !ship.autoLoop) continue;
     startLoop(s, ship, true);
   }
 }
 
 /** Start one leg of a standing route. Returns an error string or null. */
 export function startLoop(s: GameState, ship: Ship, quiet = false): string | null {
-  if (!ship.routeTo) return 'No route set';
-  if (ship.type === 'freighter') {
-    const col = s.installations[ship.routeTo];
-    if (!col) { ship.routeTo = undefined; return 'Colony no longer exists'; }
-    loadOutbound(s, ship, col);
-    if (!launch(s, ship, col.bodyId, 'haulOut')) {
-      // put the supplies back
-      unloadAtMoon(s, ship);
-      if (!quiet) return 'Not enough hydrogen fuel';
-      noteFuel(s, ship);
-      return 'Not enough hydrogen fuel';
-    }
-    return null;
-  }
+  if (!ship.routeTo && !ship.routeBody) return 'No route set';
+  if (ship.type === 'freighter') return startFreighterLeg(s, ship, quiet);
   if (ship.type === 'miner' || ship.type === 'gasScoop') {
-    if (!launch(s, ship, ship.routeTo, 'mine')) {
+    if (!ship.routeTo || !launch(s, ship, ship.routeTo, 'mine')) {
       if (quiet) noteFuel(s, ship);
       return 'Not enough hydrogen fuel';
     }
     return null;
   }
   return 'This ship cannot run routes';
+}
+
+/**
+ * Freighters on one route share a schedule: a docked freighter leaves when the route's next slot comes up,
+ * and slots are spaced by the round trip divided among the route's freighters. A freighter assigned to a
+ * colony ship's destination leaves so as to arrive just after the landing.
+ */
+function startFreighterLeg(s: GameState, ship: Ship, quiet: boolean): string | null {
+  // Waiting for a colony ship?
+  if (ship.routeBody) {
+    const bodyId = ship.routeBody;
+    const landed = s.bodies[bodyId]?.installationId;
+    if (landed) { ship.routeTo = landed; ship.routeBody = undefined; }
+    else {
+      const colonyShip = colonyShipTo(s, bodyId);
+      if (!colonyShip) {
+        ship.routeBody = undefined; ship.autoLoop = false;
+        msg(s, 'warn', `${ship.name}: route cancelled`, `No colony ship is heading for ${BODY_BY_ID[bodyId].name} any more.`, ship.id);
+        return 'No colony ship is on its way there';
+      }
+      const land = colonyShip.transit!.arriveDay;
+      const n = Object.values(s.ships).filter((sh) => sh.routeBody === bodyId).length;
+      const dep = departureToArriveAfter(s, bodyId, s.day, land + 1);
+      if (dep > s.day) return null; // waiting for the right moment
+      const interval = routeInterval(s, bodyId, n);
+      return loadAndLaunch(s, ship, foundingColony(s, bodyId, colonyShip.colonists), s.day + legDays(s, bodyId, s.day), interval, quiet);
+    }
+  }
+  const col = s.installations[ship.routeTo!];
+  if (!col) { ship.routeTo = undefined; return 'Colony no longer exists'; }
+  s.routes ??= {};
+  const route = (s.routes[col.id] ??= {});
+  if (nextSlot(s, col) > s.day) return null; // another freighter on this route left recently
+  const interval = routeInterval(s, col.bodyId, routeFreighters(s, col).length);
+  const err = loadAndLaunch(s, ship, col, s.day + legDays(s, col.bodyId, s.day), interval, quiet);
+  if (!err) route.lastDeparture = s.day;
+  return err;
+}
+
+function loadAndLaunch(s: GameState, ship: Ship, col: Installation, arrivalDay: number, interval: number, quiet: boolean): string | null {
+  loadOutbound(s, ship, col, arrivalDay, interval);
+  if (!launch(s, ship, col.bodyId, 'haulOut')) {
+    unloadAtMoon(s, ship); // put the supplies back
+    if (quiet) noteFuel(s, ship);
+    return 'Not enough hydrogen fuel';
+  }
+  return null;
 }
 
 function noteFuel(s: GameState, ship: Ship) {

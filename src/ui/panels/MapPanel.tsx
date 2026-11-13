@@ -2,7 +2,7 @@ import { useGame } from '../../store/useGame';
 import {
   type GameState, type MaterialId, type Ship, type ShipType, BODY_BY_ID, MOONS_OF, MATERIAL_BY_ID, SHIP_SPECS,
   abundanceLabel, colonyRequirementMet, distanceAU, sunDistance, driveName, driveSpeed, travelDays, missionsFor,
-  sendShip, launchAssault, fuelFor, BATTLECRUISER_POWER, TERRAFORM_FEED, TERRAFORM_RATE, fmtKg, formatDate, terraformForecast, fmtRate,
+  sendShip, launchAssault, fuelFor, BATTLECRUISER_POWER, TERRAFORM_FEED, TERRAFORM_RATE, fmtKg, formatDate, terraformForecast, fmtRate, setFeedPolicy, supplyForecast, type FeedPolicy,
 } from '../../engine';
 import { SolarCanvas } from './SolarCanvas';
 import { Bar, Globe, Section } from '../components/common';
@@ -168,6 +168,53 @@ function Launchers({ game, bodyId }: { game: GameState; bodyId: string }) {
 const FEED_NAMES = { nitrogen: 'nitrogen', water: 'water', oxygen: 'oxygen' } as const;
 const listOf = (xs: string[]) => xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
 
+const POLICY_TEXT: Record<FeedPolicy, { name: string; blurb: string }> = {
+  surplus: { name: 'Surplus only', blurb: 'The engines take only what is left once Moonbase\'s own reserve and the next load for every colony route are set aside. Restoration slows instead of colonists going short.' },
+  engines: { name: 'Engines first', blurb: 'The engines take what they need first. Restoration runs faster, but colony freighters may leave short and colonists beyond the founders can die.' },
+};
+
+/** Who gets Moonbase's oxygen, water and nitrogen first, and what that means today. */
+function FeedPolicyControl({ game }: { game: GameState }) {
+  const act = useGame((s) => s.act);
+  const f = terraformForecast(game);
+  const at = (d: number) => `${formatDate(d)}`;
+  const risks = Object.values(game.installations).filter((i) => !i.isMoonBase).map((col) => ({ col, fc: supplyForecast(game, col) })).filter((x) => x.fc.gap);
+  return (
+    <div className="growth">
+      <span className="stat-label">Feed priority</span>
+      <div className="segmented" role="radiogroup" aria-label="Feed priority">
+        {(['surplus', 'engines'] as FeedPolicy[]).map((p) => (
+          <button key={p} role="radio" aria-checked={p === f.policy} className={p === f.policy ? 'active' : ''} onClick={() => act((s) => setFeedPolicy(s, p))}>
+            {POLICY_TEXT[p].name}
+          </button>
+        ))}
+      </div>
+      <p className="dept-detail">{POLICY_TEXT[f.policy].blurb}</p>
+      <table className="restable">
+        <thead><tr><th></th><th>Stock</th><th>Committed</th><th>Engines may use</th><th>Engines a day</th></tr></thead>
+        <tbody>
+          {f.feed.map((r) => (
+            <tr key={r.mat} className={r.available < r.perDay ? 'warn-text' : ''}>
+              <td>{r.mat === 'nitrogen' ? 'N₂' : r.mat === 'oxygen' ? 'O₂' : 'Water'}</td>
+              <td>{fmtKg(r.stock)}</td>
+              <td>{fmtKg(r.committed)}</td>
+              <td>{fmtKg(r.available)}</td>
+              <td>{fmtKg(r.perDay)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted small">Committed: Moonbase's own 60-day reserve plus the next load for every colony route{f.policy === 'engines' ? ' (not protected under Engines first)' : ''}.</p>
+      {risks.map(({ col, fc }) => (
+        <p key={col.id} className="warn-text small">
+          {col.name}: {fc.gap!.mat} runs out {at(fc.gap!.runsOutDay)}
+          {fc.freighters === 0 ? '. No freighter is assigned, so nothing is set aside for it.' : `, before the next delivery (${fc.gap!.nextArrival !== null ? at(fc.gap!.nextArrival) : 'none scheduled'}).`}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 function EarthCard({ game }: { game: GameState }) {
   const e = game.earth;
   const f = terraformForecast(game);
@@ -201,6 +248,7 @@ function EarthCard({ game }: { game: GameState }) {
           <p className="muted small">
             Daily feed from Moonbase: {fmtKg(TERRAFORM_FEED.nitrogen * e.engines)} N₂, {fmtKg(TERRAFORM_FEED.water * e.engines)} water, {fmtKg(TERRAFORM_FEED.oxygen * e.engines)} O₂.
           </p>
+          <FeedPolicyControl game={game} />
           {!short && f.feedDays < (f.daysLeft ?? 0) && (
             <p className="muted small">Moonbase stock covers {f.feedDays} day{f.feedDays === 1 ? '' : 's'} of feed, before production and deliveries.</p>
           )}
