@@ -1,6 +1,7 @@
-import type { DeptId, GameState, TickResult } from './types';
+import type { DeptId, FeedPolicy, GameState, TickResult } from './types';
 import { STORY } from './data/lore';
-import { runInstallation } from './economy';
+import { runInstallation, TERRAFORM_FEED, TERRAFORM_RATE } from './economy';
+import { moonbaseCommitted } from './logistics';
 import { clearFuelNotes, runFleet } from './fleet';
 import { runThreat, DEPT_NAMES } from './threat';
 import { clone, moonbase, msg, setFlag } from './util';
@@ -9,8 +10,6 @@ import { sunDistance } from './orbits';
 import { BLUEPRINT_BY_ID } from './data/blueprints';
 import { canAfford } from './data/materials';
 
-export const TERRAFORM_FEED = { nitrogen: 400, water: 800, oxygen: 200 } as const;
-export const TERRAFORM_RATE = 0.2; // % per engine per day when fully fed
 
 /** Advance the simulation by one day. Pure: returns a new state. */
 export function advanceDay(prev: GameState): TickResult {
@@ -58,15 +57,20 @@ function runEarth(s: GameState): void {
   const e = s.earth;
   if (e.engines <= 0 || e.progress >= 100) return;
   const mb = moonbase(s);
+  // Surplus only (the default): the engines can't touch Moonbase's own reserve or what the colony routes have coming.
+  const held = (e.feedPolicy ?? 'surplus') === 'surplus' ? moonbaseCommitted(s) : { oxygen: 0, water: 0, nitrogen: 0 };
+  const avail = (k: 'nitrogen' | 'water' | 'oxygen') => Math.max(0, mb.stock[k] - held[k]);
   let frac = 1;
-  for (const [k, v] of Object.entries(TERRAFORM_FEED)) frac = Math.min(frac, mb.stock[k as 'water'] / (v * e.engines));
+  for (const [k, v] of Object.entries(TERRAFORM_FEED)) frac = Math.min(frac, avail(k as 'water') / (v * e.engines));
   frac = Math.max(0, Math.min(1, frac));
   e.fed = frac;
   e.short = (Object.entries(TERRAFORM_FEED) as ['nitrogen' | 'water' | 'oxygen', number][])
-    .filter(([k, v]) => mb.stock[k] < v * e.engines - 1e-6).map(([k]) => k);
+    .filter(([k, v]) => avail(k) < v * e.engines - 1e-6).map(([k]) => k);
   for (const [k, v] of Object.entries(TERRAFORM_FEED)) mb.stock[k as 'water'] -= v * e.engines * frac;
   if (frac < 1 && setFlag(s, `tf-starved-${Math.floor(s.day / 30)}`)) {
-    msg(s, 'warn', 'Terraforming starved', 'The engines on Earth are short of nitrogen, water or oxygen. Bring more in from Titan, Triton, Ceres or Venus.', 'earth');
+    msg(s, 'warn', 'Terraforming starved', (e.feedPolicy ?? 'surplus') === 'surplus'
+      ? 'The engines are short of nitrogen, water or oxygen: what Moonbase has is committed to its own reserve and the colony routes. Bring more in from Titan, Triton, Ganymede, Ceres or Venus, or switch the engines to Engines first.'
+      : 'The engines on Earth are short of nitrogen, water or oxygen. Bring more in from Titan, Triton, Ganymede, Ceres or Venus.', 'earth');
   }
   const before = e.progress;
   e.progress = Math.min(100, e.progress + TERRAFORM_RATE * e.engines * frac);
@@ -86,6 +90,8 @@ function runEarth(s: GameState): void {
 }
 
 /** What the player needs to plan restoration: current rate, finish estimate, feed in stock, and whether another engine is affordable. */
+type FeedMat = 'nitrogen' | 'water' | 'oxygen';
+
 export interface TerraformForecast {
   engines: number;
   queued: number;
@@ -102,7 +108,10 @@ export interface TerraformForecast {
   /** days to 100%: at the full rate when fed, at today's rate when short (Infinity if nothing gets through); null with no engines */
   daysLeft: number | null;
   finishDay: number | null;
-  /** days of feed in Moonbase stock at the current engine count, before production and deliveries */
+  policy: FeedPolicy;
+  /** per feed material: Moonbase stock, what's committed to its reserve and the colony routes, what the engines may draw on, and their daily use */
+  feed: { mat: FeedMat; stock: number; committed: number; available: number; perDay: number }[];
+  /** days of feed the engines can draw on, before production and deliveries */
   feedDays: number;
   anotherAffordable: boolean;
 }
@@ -111,11 +120,15 @@ export function terraformForecast(s: GameState): TerraformForecast {
   const e = s.earth;
   const mb = moonbase(s);
   const queued = s.queue.filter((q) => q.blueprintId === 'terraformer').length;
-  // Days of feed already in stock. Daily production and deliveries come on top, so this is a floor.
+  const policy = e.feedPolicy ?? 'surplus';
+  const held = policy === 'surplus' ? moonbaseCommitted(s) : { oxygen: 0, water: 0, nitrogen: 0 };
+  const committed = moonbaseCommitted(s);
+  const feed = (Object.entries(TERRAFORM_FEED) as [FeedMat, number][]).map(([mat, v]) => ({
+    mat, stock: mb.stock[mat], committed: committed[mat], available: Math.max(0, mb.stock[mat] - held[mat]), perDay: v * e.engines,
+  }));
+  // Days of feed the engines can draw on now. Daily production and deliveries come on top, so this is a floor.
   let feedDays = Infinity;
-  if (e.engines > 0) {
-    for (const [k, v] of Object.entries(TERRAFORM_FEED)) feedDays = Math.min(feedDays, mb.stock[k as 'water'] / (v * e.engines));
-  }
+  if (e.engines > 0) for (const f of feed) feedDays = Math.min(feedDays, f.available / f.perDay);
   // The rate is what the engines actually received on the last day. End-of-day stock is the wrong measure:
   // income arrives the next day before the engines draw, so a base living hand to mouth can look unfed when it isn't.
   const fed = e.engines > 0 ? Math.max(0, Math.min(1, e.fed ?? 1)) : 1;
@@ -136,6 +149,8 @@ export function terraformForecast(s: GameState): TerraformForecast {
     daysLeft,
     finishDay: daysLeft === null || !Number.isFinite(daysLeft) ? null : s.day + daysLeft,
     feedDays: Number.isFinite(feedDays) ? Math.floor(feedDays) : Infinity,
+    policy,
+    feed,
     anotherAffordable: s.research.done.includes('terraforming') && canAfford(mb.stock, BLUEPRINT_BY_ID.terraformer.cost),
   };
 }

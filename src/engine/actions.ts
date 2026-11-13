@@ -1,5 +1,6 @@
 // Player commands. Each takes the current state and returns a new state, or an error string.
-import type { GrowthPolicy, DeptId, GameState, Ship } from './types';
+import type { GrowthPolicy, DeptId, FeedPolicy, GameState, MaterialId, Ship } from './types';
+import { colonyShipTo } from './logistics';
 import { BLUEPRINT_BY_ID } from './data/blueprints';
 import { RESEARCH_BY_ID } from './data/research';
 import { pay, stockFrom } from './data/materials';
@@ -188,14 +189,23 @@ export function sendShip(prev: GameState, shipId: string, bodyId: string): Actio
   return ok(s);
 }
 
-/** Assign a freighter to a colony; it loops automatically. */
-export function setFreighterRoute(prev: GameState, shipId: string, colonyId: string | undefined): ActionResult {
+/**
+ * Assign a freighter to a colony; it loops automatically on the route's shared schedule.
+ * The target can also be a body a colony ship is on its way to: the freighter leaves so as to arrive
+ * just after the landing, and takes the colony over as its route once it's founded.
+ */
+export function setFreighterRoute(prev: GameState, shipId: string, target: string | undefined): ActionResult {
   const s = clone(prev);
   const ship = s.ships[shipId];
   if (!ship || ship.type !== 'freighter') return fail('Not a freighter');
-  if (!colonyId) { ship.routeTo = undefined; ship.autoLoop = false; return ok(s); }
-  if (!s.installations[colonyId] || s.installations[colonyId].isMoonBase) return fail('Choose a colony');
-  ship.routeTo = colonyId;
+  if (!target) { ship.routeTo = undefined; ship.routeBody = undefined; ship.autoLoop = false; return ok(s); }
+  const inst = s.installations[target];
+  if (inst) {
+    if (inst.isMoonBase) return fail('Choose a colony');
+    ship.routeTo = target; ship.routeBody = undefined;
+  } else if (BODY_BY_ID[target] && colonyShipTo(s, target) && !s.bodies[target].installationId) {
+    ship.routeBody = target; ship.routeTo = undefined;
+  } else return fail('Choose a colony, or a world a colony ship is heading for');
   ship.autoLoop = true;
   if (ship.status === 'docked' && ship.at === 'moon') {
     const fd = moonbase(s).depts.flightDeck!;
@@ -206,6 +216,23 @@ export function setFreighterRoute(prev: GameState, shipId: string, colonyId: str
   return ok(s);
 }
 
+/** Bring a material home first from this colony, whenever Moonbase needs it (undefined = automatic). */
+export function setRoutePreference(prev: GameState, colonyId: string, mat: MaterialId | undefined): ActionResult {
+  const s = clone(prev);
+  if (!s.installations[colonyId] || s.installations[colonyId].isMoonBase) return fail('Choose a colony');
+  s.routes ??= {};
+  const r = (s.routes[colonyId] ??= {});
+  if (mat) r.prefer = mat; else delete r.prefer;
+  return ok(s);
+}
+
+/** Who gets Moonbase's oxygen, water and nitrogen first: colony commitments (surplus) or the engines. */
+export function setFeedPolicy(prev: GameState, policy: FeedPolicy): ActionResult {
+  const s = clone(prev);
+  s.earth.feedPolicy = policy;
+  return ok(s);
+}
+
 /** Stop a looping ship after its current leg (miners/scoops return immediately if working). */
 export function recallShip(prev: GameState, shipId: string): ActionResult {
   const s = clone(prev);
@@ -213,6 +240,7 @@ export function recallShip(prev: GameState, shipId: string): ActionResult {
   if (!ship) return fail('No such ship');
   ship.autoLoop = false;
   ship.routeTo = undefined;
+  ship.routeBody = undefined;
   if (ship.status === 'working' && (ship.type === 'miner' || ship.type === 'gasScoop' || ship.type === 'surveyor')) returnHome(s, ship);
   return ok(s);
 }

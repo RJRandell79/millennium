@@ -301,3 +301,6 @@ select, input[type='text'], input:not([type]), input[inputmode] { background: #0
 
 .colony-status { padding: 0 12px 4px; }
 .colony-status .bar { margin: 6px 0 2px; }
+.supply ul.plain { margin: 4px 0 6px; padding-left: 0; }
+.supply .pref { display: block; margin: 6px 0 4px; }
+.supply .pref select { max-width: 100%; }
