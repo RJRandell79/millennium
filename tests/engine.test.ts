@@ -3,7 +3,7 @@ import {
   newGame, advanceDay, advanceUntilEvent, serialize, deserialize, sendShip, queueBuild, setResearch,
   travelDays, position, moonbase, toggleDept, raidSize, toggleCommsWatch, readFragment, deptDemand,
   archiveStats, FRAGMENTS, RESEARCH_BY_ID, COMMS_WATCH_MW, type GameState,
-  setGrowthPolicy, lsNeed, workforce, popCap, growthLimit, reserveOf, terraformForecast, fmtRate, BLUEPRINT_BY_ID,
+  setGrowthPolicy, lsNeed, workforce, popCap, growthLimit, reserveOf, terraformForecast, fmtRate, BLUEPRINT_BY_ID, shipCapacity, fuelPerAU, BULK_FREIGHT_CAPACITY,
 } from '../src/engine';
 import { playBot } from './bot';
 import { addShip } from '../src/engine/newGame';
@@ -399,6 +399,35 @@ describe('colony survival', () => {
     f.transit = { from: 'moon', to: 'ceres', departDay: after.day - 10, arriveDay: after.day + 1, purpose: 'haulOut' };
     const next = advanceDay(after).state;
     expect(commissioningOf(next.installations[id])).toBeCloseTo(c + 1 / 150 + COMMISSION_PER_DELIVERY, 5);
+  });
+});
+
+describe('bulk freight', () => {
+  it('Bulk Freight Holds raise freighter capacity and hydrogen use, and nothing else', () => {
+    const s = newGame(3);
+    expect(shipCapacity(s, 'freighter')).toBe(60000);
+    const fuel = fuelPerAU(s, 'freighter');
+    s.research.done.push('bulkFreight');
+    expect(shipCapacity(s, 'freighter')).toBe(BULK_FREIGHT_CAPACITY);
+    expect(fuelPerAU(s, 'freighter')).toBeCloseTo(fuel * 1.5);
+    expect(shipCapacity(s, 'miner')).toBe(30000);
+  });
+
+  it('a bulk freighter brings home up to 200 t from a colony', () => {
+    const s = newGame(3);
+    s.research.done.push('bulkFreight');
+    const col = makeInstallation(s, 'ceres', false, 50);
+    col.stock.water = 500000; col.stock.iron = 500000;
+    s.installations[col.id] = col;
+    s.bodies.ceres.installationId = col.id;
+    const f = addShip(s, 'freighter', 'moon');
+    f.status = 'transit';
+    f.transit = { from: 'moon', to: 'ceres', departDay: s.day - 10, arriveDay: s.day + 1, purpose: 'haulOut' };
+    const next = advanceDay(s).state;
+    const ship = next.ships[f.id];
+    const load = Object.values(ship.cargo).reduce((a, b) => a + b, 0);
+    expect(load).toBeGreaterThan(190000);
+    expect(load).toBeLessThanOrEqual(BULK_FREIGHT_CAPACITY + 1);
   });
 });
 

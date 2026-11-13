@@ -3,6 +3,7 @@ import { useGame, type FleetStatusFilter } from '../../store/useGame';
 import {
   type GameState, type Ship, type ShipType, BODY_BY_ID, SHIP_SPECS, MATERIAL_IDS, MATERIAL_BY_ID, BLUEPRINT_BY_ID,
   missionsFor, sendShip, setFreighterRoute, recallShip, launchAssault, formatDate, fmtKg, stockTotal, fuelFor,
+  shipCapacity,
 } from '../../engine';
 import { Bar, Empty, Section } from '../components/common';
 
@@ -163,11 +164,11 @@ function ShipCard({ game, ship }: { game: GameState; ship: Ship }) {
     <article className={`ship ship-${ship.type}`}>
       <div className="ship-top">
         <strong>{ship.name}</strong>
-        <span className="muted small">{spec.name}</span>
+        <span className="muted small">{spec.name}{ship.type === 'freighter' ? ` · ${fmtKg(shipCapacity(game, 'freighter'))} kg hold` : ''}</span>
       </div>
       <p className="ship-status">{status}</p>
       {t && <Bar value={game.day - t.departDay} max={t.arriveDay - t.departDay} tone="cyan" label={`${t.arriveDay - game.day} days`} />}
-      {ship.status === 'working' && spec.capacity > 0 && <Bar value={total} max={spec.capacity} tone="amber" label={`Hold ${fmtKg(total)} / ${fmtKg(spec.capacity)} kg`} />}
+      {ship.status === 'working' && spec.capacity > 0 && <Bar value={total} max={shipCapacity(game, ship.type)} tone="amber" label={`Hold ${fmtKg(total)} / ${fmtKg(shipCapacity(game, ship.type))} kg`} />}
       {total > 1 && ship.status !== 'working' && <p className="muted small">Cargo: {cargoLine(ship)}</p>}
       {ship.consignments.length > 0 && <p className="muted small">Crates: {ship.consignments.map((c) => BLUEPRINT_BY_ID[c.blueprintId].name).join(', ')}</p>}
       {routeName && <p className="small">Route: <strong>{routeName}</strong> {ship.autoLoop ? '(looping)' : '(last leg)'}</p>}

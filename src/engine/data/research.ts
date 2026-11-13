@@ -42,6 +42,8 @@ export const RESEARCH: ResearchDef[] = [
     desc: 'Habitats that stay warm at -180°C.', unlocks: 'Colonies on Saturn, Uranus, Neptune and Pluto systems' },
   { id: 'aerostats', name: 'Aerostat Habitats', days: 16, requires: ['thermalShielding'], branch: 'Colonies',
     desc: 'Floating cities in the Venusian cloud deck.', unlocks: 'Colonies on Venus' },
+  { id: 'bulkFreight', name: 'Bulk Freight Holds', days: 16, requires: ['ionDrive'], branch: 'Space',
+    desc: 'Expandable cargo frames and pressurised tankage, refitted to every freighter at Moonbase.', unlocks: 'Freighters carry 200 t instead of 60 t (hydrogen per AU +50%)' },
   { id: 'gasScoop', name: 'Atmospheric Scoops', days: 14, requires: ['ionDrive'], branch: 'Space',
     desc: 'Dive into a gas giant, skim its atmosphere, climb back out.', unlocks: 'Gas Scoop (hydrogen, methane, helium-3)' },
   { id: 'shields', name: 'Deflector Shields', days: 16, requires: ['interceptorMk2'], branch: 'Defence',
